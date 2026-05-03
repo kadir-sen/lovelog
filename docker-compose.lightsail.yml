@@ -1,0 +1,22 @@
+# Lightsail (host'ta nginx + certbot olduğu senaryo) için sadeleştirilmiş compose.
+# - Tek servis: lovelog (statik nginx + dist).
+# - 127.0.0.1:8080 → container:80; sadece localhost'tan erişilebilir.
+# - SSL ve domain routing host nginx'in sorumluluğunda.
+# - Container-içi nginx config volume mount ile override edilir (root nginx.conf değiştirilmez).
+#
+# Kullanım: docker compose -f docker-compose.lightsail.yml up -d --build
+
+services:
+  lovelog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GEMINI_API_KEY: ${GEMINI_API_KEY}
+    image: lovelog:latest
+    container_name: lovelog
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./deploy/nginx-internal.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped

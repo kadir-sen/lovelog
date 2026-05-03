@@ -46,10 +46,15 @@ export const StackedDailyBarChart: React.FC<{ data: DailyStats[]; participants: 
     ...d.breakdown
   }));
 
+  const handleBarClick = (state: any) => {
+    const date = state?.activePayload?.[0]?.payload?.date;
+    if (date) onBarClick?.(date);
+  };
+
   return (
     <div className="h-80 w-full cursor-pointer">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartData} onClick={(state) => state?.activePayload?.[0] && onBarClick?.(state.activePayload[0].payload.date)} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+        <BarChart data={chartData} onClick={handleBarClick} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#fce7f3" />
           <XAxis dataKey="date" hide />
           <YAxis fontSize={10} />

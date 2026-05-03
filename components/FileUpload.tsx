@@ -1,10 +1,23 @@
 import React, { ChangeEvent, useState } from 'react';
 
 interface FileUploadProps {
-  onFileProcessed: (text: string) => void;
+  onFileProcessed: (text: string) => void | Promise<void>;
+  progressStage?: string | null;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ onFileProcessed }) => {
+const ANALYSIS_STAGES = [
+  'Dosya okunuyor',
+  'Mesajlar ayrıştırılıyor',
+  'Mesajlar normalize ediliyor',
+  'Temel metrikler hesaplanıyor',
+  'Dönemler çıkarılıyor',
+  'Dönemler ve oturumlar çıkarılıyor',
+  'NLP sinyalleri hesaplanıyor',
+  'Yapay zeka için güvenli özet hazırlanıyor',
+  'Dashboard hazırlanıyor'
+];
+
+export const FileUpload: React.FC<FileUploadProps> = ({ onFileProcessed, progressStage }) => {
   const [loading, setLoading] = useState(false);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -14,9 +27,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileProcessed }) => {
     setLoading(true);
     const reader = new FileReader();
     
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string;
-      onFileProcessed(text);
+      await onFileProcessed(text);
       setLoading(false);
     };
 
@@ -54,6 +67,30 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileProcessed }) => {
           </div>
           <input type="file" className="hidden" accept=".txt" onChange={handleFileChange} disabled={loading} />
         </label>
+
+        {(loading || progressStage) && (
+          <div className="mt-6 text-left bg-white border border-pink-100 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-bold text-gray-700">Analiz aşamaları</p>
+              <p className="text-[10px] text-pink-500 font-semibold">{progressStage || 'Hazırlanıyor'}</p>
+            </div>
+            <div className="space-y-2">
+              {ANALYSIS_STAGES.map((stage) => {
+                const currentIndex = progressStage ? ANALYSIS_STAGES.indexOf(progressStage) : 0;
+                const stageIndex = ANALYSIS_STAGES.indexOf(stage);
+                const isDone = stageIndex < currentIndex;
+                const isCurrent = stage === progressStage;
+
+                return (
+                  <div key={stage} className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${isDone ? 'bg-green-400' : isCurrent ? 'bg-pink-500 animate-pulse' : 'bg-gray-200'}`}></span>
+                    <span className={`text-xs ${isDone || isCurrent ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>{stage}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         
         <div className="mt-6 text-xs text-gray-400 text-left">
           <p className="font-semibold">Nasıl dışa aktarılır?</p>

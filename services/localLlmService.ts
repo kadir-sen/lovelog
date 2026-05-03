@@ -27,19 +27,14 @@ export const generateLocalInsights = async (analysis: AnalysisResult): Promise<G
     throw new Error("Yerel model henüz yüklenmedi.");
   }
 
-  // Yerel modellerin context window'u dardır (yaklaşık 2000-4000 kelime).
-  // Bu yüzden tüm sohbet yerine SADECE istatistikleri vermeliyiz.
-  const participantNames = analysis.participants.map(p => p.name).join(" ve ");
-  const statsSummary = analysis.participants.map(p => 
-    `${p.name}: ${p.messageCount} mesaj, Ort. Cevap: ${p.avgResponseTimeMinutes.toFixed(1)} dk, Aşk Skoru: ${p.loveWordsScore}`
-  ).join('\n');
+  // Yerel modellere de ham sohbet vermiyoruz; sadece anonim kompakt özet gider.
+  const compactSummary = JSON.stringify(analysis.llmSummary).slice(0, 6000);
 
   // JSON şeması local modellerde zor olabilir, bu yüzden metin isteyip parse etmeye çalışacağız
   // veya daha basit bir prompt kullanacağız.
   const prompt = `
     Sen bir ilişki koçusun. Şu verilere bak:
-    İlişki: ${participantNames}
-    İstatistikler: ${statsSummary}
+    Anonim kompakt sohbet özeti: ${compactSummary}
     
     Bu ilişki için JSON formatında bir analiz yap. Format kesinlikle şöyle olmalı, başka bir şey yazma:
     {

@@ -2,17 +2,53 @@
 <html lang="tr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>LoveLog - Aşk Analizi</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-      body {
-        font-family: 'Outfit', sans-serif;
-        background-color: #fff0f3; /* Rose 50 */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+        background: #1a0b2e;
+        color: #fff5fb;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       }
+      *, *::before, *::after { box-sizing: border-box; }
+      .ll-serif { font-family: 'Fraunces', Georgia, serif; }
+      .ll-cosmic-bg {
+        background:
+          radial-gradient(ellipse 80% 50% at 80% 0%, #5b1b8a 0%, transparent 55%),
+          radial-gradient(ellipse 70% 60% at 10% 90%, #c83a86 0%, transparent 50%),
+          radial-gradient(ellipse 60% 60% at 90% 95%, #4a1d8c 0%, transparent 55%),
+          linear-gradient(180deg, #1a0b2e 0%, #2a0f47 100%);
+        background-attachment: fixed;
+      }
+      @keyframes ll-twinkle {
+        0%, 100% { opacity: 0.3; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.4); }
+      }
+      @keyframes ll-pulse {
+        0%, 100% { transform: scale(1); filter: brightness(1); }
+        50% { transform: scale(1.04); filter: brightness(1.15); }
+      }
+      @keyframes ll-orbit {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes ll-fade-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .ll-fade-in { animation: ll-fade-in 0.4s ease both; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
     </style>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
@@ -23,9 +59,10 @@
     "@mlc-ai/web-llm": "https://aistudiocdn.com/@mlc-ai/web-llm@^0.2.80"
   }
 }
-</script>
-</head>
-  <body>
+    </script>
+  </head>
+  <body class="ll-cosmic-bg">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

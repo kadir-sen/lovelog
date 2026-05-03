@@ -1,0 +1,61 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GEMINI_API_KEY: ${GEMINI_API_KEY}
+    image: lovelog:latest
+    container_name: lovelog
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    restart: unless-stopped
+    # nginx reload her 6 saatte bir — yenilenen sertifikayı pick up etsin
+    command: >-
+      /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g 'daemon off;'"
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: lovelog-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    restart: unless-stopped
+    # Her 12 saatte bir yenilemeyi dene; cert hala >30 gün ise no-op
+    entrypoint: >-
+      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+
+  duckdns:
+    image: alpine:3.20
+    container_name: lovelog-duckdns
+    environment:
+      DUCKDNS_DOMAIN: ${DUCKDNS_DOMAIN}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN}
+    restart: unless-stopped
+    command: >-
+      /bin/sh -c "apk add --no-cache curl >/dev/null && while :; do
+        echo \"[duckdns] $$(date -Iseconds) updating $${DUCKDNS_DOMAIN}\";
+        curl -fsS \"https://www.duckdns.org/update?domains=$${DUCKDNS_DOMAIN}&token=$${DUCKDNS_TOKEN}&ip=\" || echo '[duckdns] update failed';
+        echo;
+        sleep 300;
+      done"
+
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: lovelog-dev:latest
+    container_name: lovelog-dev
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0

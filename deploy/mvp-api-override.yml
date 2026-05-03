@@ -1,0 +1,14 @@
+# Lightsail'de /opt/mvp-api/docker-compose.override.yml olarak yerleştirilir.
+# Orijinal docker-compose.prod.yml dosyası DEĞİŞMEZ — Docker Compose otomatik olarak
+# override dosyasını üzerine merge eder.
+#
+# Amaç: mvp-api host port 80'i serbest bıraksın (host nginx kullanacak), sadece localhost'tan
+# erişilebilir olsun. mvp-api container'ının davranışı değişmez, sadece dış port mapping'i değişir.
+#
+# Geri almak için: bu dosyayı silip `docker compose up -d` çalıştır.
+
+services:
+  # mvp-api'deki gerçek servis adı 'api' (container_name 'mvp-api' farklı)
+  api:
+    ports: !override
+      - "127.0.0.1:8000:8000"

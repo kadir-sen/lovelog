@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# SSH / TLS keys (must never be committed)
+*.pem
+*.key
+
+# Let's Encrypt / certbot data
+certbot/conf/
+certbot/www/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
