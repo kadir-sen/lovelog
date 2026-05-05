@@ -2,6 +2,7 @@ import React from 'react';
 import { LL, Sparkle, Glass } from './lovelog/tokens';
 import { Screen } from './lovelog/Screen';
 import { AnalysisResult } from '../types';
+import { RelationMode } from './RelationSelectScreen';
 
 interface HomeScreenProps {
   analysis: AnalysisResult | null;
@@ -9,6 +10,7 @@ interface HomeScreenProps {
   onOpenAnalysis: () => void;
   onOpenFal: () => void;
   onOpenCoach: () => void;
+  relationMode?: RelationMode;
 }
 
 const computeLoveScore = (a: AnalysisResult): number => {
@@ -22,12 +24,21 @@ const computeLoveScore = (a: AnalysisResult): number => {
   return Math.max(20, Math.min(99, Math.round(raw)));
 };
 
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 6) return 'İyi geceler';
+  if (hour < 12) return 'Günaydın';
+  if (hour < 18) return 'İyi günler';
+  return 'İyi akşamlar';
+};
+
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   analysis,
   onUpload,
   onOpenAnalysis,
   onOpenFal,
   onOpenCoach,
+  relationMode = 'lover',
 }) => {
   const p1 = analysis?.participants[0];
   const p2 = analysis?.participants[1] ?? p1;
@@ -45,7 +56,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         {/* Greeting */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
-            <div style={{ fontSize: 13, color: LL.fgMuted }}>İyi geceler, {greetingName} ✨</div>
+            <div style={{ fontSize: 13, color: LL.fgMuted }}>
+              {getGreeting()}, {greetingName} ✨
+            </div>
             <h1
               className="ll-serif"
               style={{
@@ -146,15 +159,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     fontWeight: 600,
                   }}
                 >
-                  {score >= 80 ? 'çok uyumlu' : score >= 60 ? 'sıcak' : 'inceleme gerek'}
+                  {relationMode === 'friend'
+                    ? score >= 80
+                      ? 'bestie enerjisi'
+                      : score >= 60
+                      ? 'iyi vibe'
+                      : 'konuşmak gerek'
+                    : score >= 80
+                    ? 'çok uyumlu'
+                    : score >= 60
+                    ? 'sıcak'
+                    : 'inceleme gerek'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
                 {[
-                  { l: 'Aşk', v: Math.min(99, score + 5), c: LL.hotPink },
+                  { l: relationMode === 'friend' ? 'Vibe' : 'Aşk', v: Math.min(99, score + 5), c: LL.hotPink },
                   { l: 'İletişim', v: Math.max(40, score - 9), c: LL.lavender },
-                  { l: 'Güven', v: Math.max(40, score - 2), c: LL.gold },
-                  { l: 'Tutku', v: Math.min(99, score + 3), c: LL.blush },
+                  { l: relationMode === 'friend' ? 'Destek' : 'Güven', v: Math.max(40, score - 2), c: LL.gold },
+                  { l: relationMode === 'friend' ? 'Drama' : 'Tutku', v: Math.min(99, score + 3), c: LL.blush },
                 ].map(b => (
                   <div key={b.l} style={{ flex: 1 }}>
                     <div
@@ -198,7 +221,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 Sohbetini yükle, yıldızlar konuşsun ✨
               </div>
               <div style={{ fontSize: 12, color: LL.fgMuted, marginTop: 8, lineHeight: 1.5 }}>
-                WhatsApp dışa aktarımını seç, gerisini bize bırak.
+                Sadece WhatsApp .txt dışa aktarımını seç, gerisini bize bırak.
               </div>
               <div
                 style={{
@@ -242,11 +265,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               Yeni
             </div>
             <div className="ll-serif" style={{ fontSize: 18, fontStyle: 'italic', marginTop: 6, lineHeight: 1.1 }}>
-              Bugünün
+              {relationMode === 'friend' ? 'Arkadaşlık' : 'Bugünün'}
               <br />
               Falı
             </div>
-            <div style={{ fontSize: 11, color: LL.fgMuted, marginTop: 8 }}>3 kart çek</div>
+            <div style={{ fontSize: 11, color: LL.fgMuted, marginTop: 8 }}>
+              {relationMode === 'friend' ? 'vibe açılımı' : '3 kart çek'}
+            </div>
           </Glass>
           <Glass hover onClick={onOpenCoach} style={{ padding: 16, position: 'relative', overflow: 'hidden', minHeight: 110 }}>
             <div style={{ position: 'absolute', bottom: -10, right: -10, fontSize: 60, opacity: 0.25 }}>♡</div>
@@ -256,7 +281,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               Sohbet
             </div>
             <div className="ll-serif" style={{ fontSize: 18, fontStyle: 'italic', marginTop: 6, lineHeight: 1.1 }}>
-              İlişki
+              {relationMode === 'friend' ? 'Kanka' : 'İlişki'}
               <br />
               Koçu
             </div>
@@ -293,7 +318,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 Günün enerjisi
               </div>
               <div className="ll-serif" style={{ fontSize: 15, fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 }}>
-                "Bugün Venüs sana cesaret veriyor. Kalbindekini söyle 💌"
+                {relationMode === 'friend'
+                  ? '"Bugün kanka enerjisi netlik istiyor. İçine attığını tatlı ama açık söyle."'
+                  : '"Bugün Venüs sana cesaret veriyor. Kalbindekini söyle 💌"'}
               </div>
             </div>
           </div>

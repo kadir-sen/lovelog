@@ -1,60 +1,68 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, GeminiInsight } from "../types";
+import { RelationshipMode } from "./relationshipReport";
 
-const apiKey = process.env.API_KEY || ''; 
-// Note: In a real production build, handle missing API key gracefully or prompt user if permitted. 
-// Here we assume it is injected via env as per instructions.
-
+const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
-export const generateRelationshipInsights = async (analysis: AnalysisResult): Promise<GeminiInsight> => {
+const unavailableInsight = (reason: string): GeminiInsight => ({
+  summary: reason,
+  negativeSummary: "Kaos yorumu için yapay zeka yanıtı alınamadı.",
+  mostEmotional: "Veri yok",
+  mostCurious: "Veri yok",
+  mostInterested: "Veri yok",
+  mostArgumentative: "Veri yok",
+  mostUnfair: "Veri yok",
+  mostToxic: "Veri yok",
+  funFact: "Detaylı yorum için yapay zeka bağlantısı gerekiyor.",
+  relationshipTimeline: "Dönemsel hikaye üretilemedi.",
+  loveLanguageAnalysis: "Sevgi dili analizi üretilemedi.",
+  communicationBalance: "İletişim dengesi yorumlanamadı.",
+  responseRhythm: "Cevap ritmi yorumlanamadı.",
+  tensionAnalysis: "Gerilim analizi üretilemedi.",
+  evidenceBasedFun: "Kanıtlı eğlenceli çıkarım üretilemedi.",
+  carefulAdvice: "Bu analiz sohbet metriklerinden türetilen eğlenceli bir yorumdur; kesin hüküm değildir."
+});
+
+export const generateRelationshipInsights = async (analysis: AnalysisResult, mode: RelationshipMode = 'lover'): Promise<GeminiInsight> => {
   if (!apiKey) {
-    return {
-      summary: "API Anahtarı eksik, yapay zeka analizi yapılamıyor.",
-      negativeSummary: "Karanlık tarafı görmek için API anahtarı gerekiyor.",
-      mostEmotional: "Veri yok",
-      mostCurious: "Veri yok",
-      mostInterested: "Veri yok",
-      mostArgumentative: "Veri yok",
-      mostUnfair: "Veri yok",
-      mostToxic: "Veri yok",
-      funFact: "API Anahtarı ekleyerek detaylı analiz alabilirsiniz."
-    };
+    return unavailableInsight("API Anahtarı eksik, yapay zeka analizi yapılamıyor.");
   }
 
-  // Prepare prompt data
-  const participantNames = analysis.participants.map(p => p.name).join(" ve ");
-  const statsSummary = analysis.participants.map(p => 
-    `${p.name}: ${p.messageCount} mesaj, Ortalama cevap süresi: ${p.avgResponseTimeMinutes.toFixed(1)} dk, Sevgi sözcükleri skoru: ${p.loveWordsScore}`
-  ).join('\n');
+  const compactSummary = JSON.stringify(analysis.llmSummary);
 
   const prompt = `
-    Sen bir ilişki koçu ve veri analistisin. Aşağıda ${participantNames} arasındaki bir WhatsApp sohbetinin istatistikleri ve örnek konuşmaları var.
-    
-    İSTATİSTİKLER:
-    ${statsSummary}
+    Sen Türkçe konuşan bir ilişki verisi yorumlayıcısısın.
+    Analiz tipi: ${mode === 'friend' ? 'ARKADAŞLIK. Romantik sevgili analizi yapma; destek, eğlence, iç şaka, drama, karşılıklılık, plan yapma ve uzaklaşma sinyallerini yorumla.' : 'SEVGİLİ/ROMANTİK. Sevgi, flört, gerilim, cevap ritmi ve iletişim dengesini yorumla.'}
+    Aşağıdaki veri ham WhatsApp konuşması değildir. Tarayıcıda çıkarılmış sıkıştırılmış NLP metrikleri ve kısa kanıt parçalarıdır.
+    Kişi adları kullanıcının tercihiyle gerçek isimleriyle korundu; bu adları yorumlarda olduğu gibi kullan, takma ad türetme.
+    Not: tension/harsh/love sayımları gülme tokenleri ve negasyon ("değil", "sevmiyorum") açısından düzeltilmiştir; "salak 😂" veya "seni sevmiyorum" gibi şaka/iğneleme/olumsuz ifadeler bu sayımlardan çıkarılmıştır. Sertlik yorumlarını bu düzeltilmiş sayımlara göre yap; ham metinde geçen kelimelerden hareketle ek varsayım kurma.
 
-    ÖRNEK KONUŞMA KESİTLERİ:
-    ${analysis.sampleConversation.substring(0, 8000)} (Kısaltılmış)
+    KOMPAKT ANALİZ VERİSİ:
+    ${compactSummary}
 
     GÖREVİN:
-    Bu verileri kullanarak JSON formatında hem "Aşk Dolu" (Pozitif) hem de "Kaotik/Karanlık" (Negatif/Hicivsel) yönleri analiz et.
-    
+    Bu metrikleri kullanarak JSON formatında hem tatlı hem de hafif kaotik ama kanıta dayalı bir analiz üret.
+    Kesin psikolojik teşhis koyma; "sinyal", "ritim", "izlenim" gibi dikkatli ifadeler kullan.
+    LLM çıktısı anlatı katmanıdır; metriklerle çelişen iddialar üretme.
+
     Lütfen şu alanları doldur:
-    1. summary: İlişkinin genel dinamiklerini anlatan kısa, tatlı ve esprili bir paragraf (maks 3 cümle). "Ne kadar tatlı bir çift" tonunda.
-    2. negativeSummary: İlişkinin gölgeli taraflarını, inatlaşmaları, kaprisleri veya kimin kimi darladığını anlatan, iğneleyici ve hicivsel bir "Karanlık Özet" (maks 3 cümle). "Bunlar birbirini yiyor" tonunda.
-    
-    POZİTİF ANALİZ:
-    3. mostEmotional: Kim daha duygusal görünüyor ve neden? (Kısa cevap)
-    4. mostCurious: Kim daha çok soru soruyor veya meraklı? (Kısa cevap)
-    5. mostInterested: Kim ilişkiye daha fazla yatırım yapıyor veya daha ilgili? (Kısa cevap)
-
-    NEGATİF / KAOS ANALİZİ (Acımasız ve komik ol):
-    6. mostArgumentative: Kim daha çok kavga başlatıyor, sorun çıkarıyor veya tartışmaya meyilli? (Kısa cevap)
-    7. mostUnfair: Kim daha anlayışsız, inatçı, trip atan veya empati yoksunu davranıyor? (Kısa cevap)
-    8. mostToxic: Kim daha sert, kırıcı, argo veya 'evil' (şeytani) konuşuyor veya manipülatif? (Kısa cevap)
-
-    9. funFact: Sohbetten veya istatistiklerden çıkarılan çok ilginç veya komik bir detay.
+    1. summary: Genel dinamikleri anlatan kısa, tatlı ve esprili paragraf (maks 3 cümle).
+    2. negativeSummary: Gölgeli tarafları iğneleyici ama ağır suçlayıcı olmayan bir "Kaos Özeti" olarak anlat (maks 3 cümle).
+    3. mostEmotional: Kim daha duygusal görünüyor ve hangi sinyale göre?
+    4. mostCurious: Kim daha çok soru soruyor veya meraklı?
+    5. mostInterested: Kim daha ilgili veya ilişkiye daha çok emek veriyor?
+    6. mostArgumentative: Kimde tartışma/gerilim sinyali daha yüksek görünüyor?
+    7. mostUnfair: Kimde dengesizlik veya zorlayıcı iletişim sinyali görünüyor?
+    8. mostToxic: Kimde sert dil sinyali daha belirgin? Ağır itham kurma.
+    9. funFact: İstatistiklerden çıkan ilginç veya komik bir detay.
+    10. relationshipTimeline: Dönemsel ilişki hikayesini 2-4 cümlede anlat.
+    11. loveLanguageAnalysis: Sevgi dili ve şefkat sinyallerini özetle.
+    12. communicationBalance: İletişim dengesi, soru sorma ve başlatma ritmini yorumla.
+    13. responseRhythm: Cevap verme ritmini ortalama ve medyan farkına dikkat ederek yorumla.
+    14. tensionAnalysis: Gerilim/kaos sinyallerini ölçülü ve eğlenceli şekilde açıkla.
+    15. evidenceBasedFun: Kanıt parçalarına dayalı eğlenceli bir çıkarım yap.
+    16. carefulAdvice: Bunun kesin hüküm değil, sohbet ritmine dayalı eğlenceli analiz olduğunu nazikçe hatırlatan kısa not.
 
     Yanıtı sadece saf JSON olarak ver.
   `;
@@ -76,7 +84,14 @@ export const generateRelationshipInsights = async (analysis: AnalysisResult): Pr
             mostArgumentative: { type: Type.STRING },
             mostUnfair: { type: Type.STRING },
             mostToxic: { type: Type.STRING },
-            funFact: { type: Type.STRING }
+            funFact: { type: Type.STRING },
+            relationshipTimeline: { type: Type.STRING },
+            loveLanguageAnalysis: { type: Type.STRING },
+            communicationBalance: { type: Type.STRING },
+            responseRhythm: { type: Type.STRING },
+            tensionAnalysis: { type: Type.STRING },
+            evidenceBasedFun: { type: Type.STRING },
+            carefulAdvice: { type: Type.STRING }
           }
         }
       }
@@ -84,21 +99,10 @@ export const generateRelationshipInsights = async (analysis: AnalysisResult): Pr
 
     const text = response.text;
     if (!text) throw new Error("Boş yanıt");
-    
-    return JSON.parse(text) as GeminiInsight;
 
+    return JSON.parse(text) as GeminiInsight;
   } catch (error) {
     console.error("Gemini Error:", error);
-    return {
-      summary: "Yapay zeka şu anda biraz yorgun, daha sonra tekrar deneyin.",
-      negativeSummary: "Karanlık güçler şu an devre dışı.",
-      mostEmotional: "Analiz edilemedi",
-      mostCurious: "Analiz edilemedi",
-      mostInterested: "Analiz edilemedi",
-      mostArgumentative: "Analiz edilemedi",
-      mostUnfair: "Analiz edilemedi",
-      mostToxic: "Analiz edilemedi",
-      funFact: "Bağlantı hatası oluştu."
-    };
+    return unavailableInsight("Yapay zeka şu anda yanıt veremiyor, daha sonra tekrar deneyin.");
   }
 };

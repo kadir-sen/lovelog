@@ -39,13 +39,18 @@ interface StarFieldProps {
 
 export const StarField: React.FC<StarFieldProps> = ({ density = 60, opacity = 0.7, animated = true }) => {
   const stars = React.useMemo(() => {
+    let seed = density * 9973;
+    const next = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return seed / 4294967296;
+    };
     return Array.from({ length: density }, (_, i) => ({
       id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      s: 0.5 + Math.random() * 1.8,
-      d: Math.random() * 4,
-      o: 0.3 + Math.random() * 0.7,
+      x: next() * 100,
+      y: next() * 100,
+      s: 0.5 + next() * 1.8,
+      d: next() * 4,
+      o: 0.3 + next() * 0.7,
     }));
   }, [density]);
   return (
