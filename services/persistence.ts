@@ -86,13 +86,8 @@ export const savePersistedState = (state: {
   relationMode: RelationMode;
   viewerName: string | null;
 }): boolean => {
-  // coachProfile.messageInsights 120k+ öğelik bir array olabilir (~50-100MB JSON).
-  // localStorage 5-10MB sınırlı; bu alanı persiste etmiyoruz. Sayfa yenilendiğinde
-  // coachService.getOrBuildProfile lazy fallback'e düşer.
-  const { coachProfile: _strippedProfile, ...analysisLite } = state.analysis as AnalysisResult & { coachProfile?: unknown };
   const payload: AnalysisPayload = {
     ...state,
-    analysis: analysisLite as AnalysisResult,
     savedAt: Date.now(),
   };
   return safeSet(KEYS.analysis, JSON.stringify(payload));

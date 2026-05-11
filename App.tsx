@@ -4,30 +4,26 @@ import { Dashboard } from './components/Dashboard';
 import { HomeScreen } from './components/HomeScreen';
 import { AnalyzingScreen } from './components/AnalyzingScreen';
 import { FalScreen } from './components/FalScreen';
-import { CoachScreen } from './components/CoachScreen';
 import { ParticipantSelectScreen } from './components/ParticipantSelectScreen';
 import { RelationMode, RelationSelectScreen } from './components/RelationSelectScreen';
 import { TabBar, TabId } from './components/lovelog/TabBar';
 import { parseChatFile } from './services/parser';
 import { analyzeChat } from './services/analytics';
-import { buildConversationProfileAsync } from './services/relationshipMemory';
 import { loadPersistedState, savePersistedState, clearAllDeviceData } from './services/persistence';
 import { AnalysisResult, Message } from './types';
 
-type Route = 'home' | 'upload' | 'relation' | 'participant' | 'analyzing' | 'analyze' | 'fal' | 'coach';
+type Route = 'home' | 'upload' | 'relation' | 'participant' | 'analyzing' | 'analyze' | 'fal';
 
 const TAB_ROUTE: Record<TabId, Route> = {
   home: 'home',
   analyze: 'analyze',
   fal: 'fal',
-  coach: 'coach',
 };
 
 const ROUTE_TAB: Partial<Record<Route, TabId>> = {
   home: 'home',
   analyze: 'analyze',
   fal: 'fal',
-  coach: 'coach',
 };
 
 const App: React.FC = () => {
@@ -120,19 +116,9 @@ const App: React.FC = () => {
       await yieldToUi();
       const result = analyzeChat(pendingMessages, setProgressStage);
 
-      // Koç ekranındaki ağır lazy iş (signal/pattern/episode regex taraması)
-      // analiz fazına çekilir. Kullanıcı bu ekranda zaten bekliyor; koç ekranı
-      // açılışı saniyeler yerine ms'lere iner.
-      const coachProfile = await buildConversationProfileAsync(
-        result,
-        name,
-        relationMode,
-        setProgressStage,
-      );
-
       setProgressStage(relationMode === 'friend' ? 'Bestie raporu hazırlanıyor' : 'Dashboard hazırlanıyor');
       await yieldToUi();
-      setAnalysis({ ...result, coachProfile });
+      setAnalysis(result);
       setPendingMessages(null);
       setProgressStage(null);
       setRoute('analyze');
@@ -163,7 +149,7 @@ const App: React.FC = () => {
   };
 
   const activeTab: TabId = (ROUTE_TAB[route] as TabId) ?? 'home';
-  const showTabBar = route === 'home' || route === 'analyze' || route === 'fal' || route === 'coach';
+  const showTabBar = route === 'home' || route === 'analyze' || route === 'fal';
 
   return (
     <>
@@ -173,7 +159,6 @@ const App: React.FC = () => {
           onUpload={() => setRoute('upload')}
           onOpenAnalysis={() => (analysis ? setRoute('analyze') : setRoute('upload'))}
           onOpenFal={() => setRoute('fal')}
-          onOpenCoach={() => setRoute('coach')}
           relationMode={relationMode}
         />
       )}
@@ -244,8 +229,6 @@ const App: React.FC = () => {
       )}
 
       {route === 'fal' && <FalScreen analysis={analysis} onBack={() => setRoute('home')} relationMode={relationMode} />}
-
-      {route === 'coach' && <CoachScreen analysis={analysis} onBack={() => setRoute('home')} relationMode={relationMode} viewerName={viewerName} />}
 
       {showTabBar && <TabBar active={activeTab} onChange={handleTabChange} hasAnalysis={!!analysis} relationMode={relationMode} />}
     </>

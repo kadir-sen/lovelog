@@ -3,7 +3,7 @@ import { LL } from './tokens';
 
 import { RelationMode } from '../RelationSelectScreen';
 
-export type TabId = 'home' | 'analyze' | 'fal' | 'coach';
+export type TabId = 'home' | 'analyze' | 'fal';
 
 interface TabBarProps {
   active: TabId;
@@ -16,7 +16,6 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'home', label: 'Ana', icon: '✦' },
   { id: 'analyze', label: 'Analiz', icon: '◐' },
   { id: 'fal', label: 'Fal', icon: '☾' },
-  { id: 'coach', label: 'Koç', icon: '♡' },
 ];
 
 export const TabBar: React.FC<TabBarProps> = ({ active, onChange, hasAnalysis = true, relationMode = 'lover' }) => {
@@ -26,8 +25,6 @@ export const TabBar: React.FC<TabBarProps> = ({ active, onChange, hasAnalysis = 
           ? { ...tab, label: 'Vibe' }
           : tab.id === 'fal'
           ? { ...tab, label: 'Tea', icon: '☕' }
-          : tab.id === 'coach'
-          ? { ...tab, label: 'Zeyno', icon: '✿' }
           : tab
       )
     : TABS;
