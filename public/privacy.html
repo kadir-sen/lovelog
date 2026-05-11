@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>LoveLog · Gizlilik Politikası / Privacy Policy</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px 18px 80px;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #1a0b2e;
+      color: #fff5fb;
+      max-width: 760px;
+      margin: 0 auto;
+      line-height: 1.55;
+    }
+    h1 { font-size: 26px; margin: 8px 0 4px; }
+    h2 { font-size: 18px; margin: 26px 0 6px; color: #ffd6dc; }
+    h3 { font-size: 15px; margin: 18px 0 4px; color: #ffd6dc; }
+    p, li { font-size: 14px; color: #d8c8e8; }
+    a { color: #f5b942; }
+    hr { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 32px 0; }
+    .meta { font-size: 12px; color: #8a7c9a; margin-bottom: 18px; }
+    code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>LoveLog · Gizlilik Politikası</h1>
+  <p class="meta">Yürürlük tarihi: 2026-05-09 · Son güncelleme: 2026-05-09</p>
+
+  <p>LoveLog ("uygulama"), WhatsApp sohbet dosyalarınızı analiz ederek ilişki ve arkadaşlık dinamikleri hakkında özet rapor üreten bir mobil/web uygulamasıdır. Bu politika, uygulamanın hangi verileri topladığını ve nasıl kullandığını açıklar.</p>
+
+  <h2>1. Ham sohbet verisi cihazda kalır</h2>
+  <p>Yüklediğiniz <code>.txt</code> WhatsApp dışa aktarımı yalnızca cihazınızda işlenir ve cihazınızın yerel deposunda (localStorage / SharedPreferences / UserDefaults) saklanır. <strong>Ham mesaj içeriği sunucularımıza gönderilmez.</strong></p>
+
+  <h2>2. AI yorumları için sunucuya gönderilen veri</h2>
+  <p>AI destekli yorumlar (Dashboard özetleri, koç cevapları, fal yorumları) için yalnızca anonim NLP metrik özeti sunucumuzdan Google Gemini API'sine iletilir. Bu özet:</p>
+  <ul>
+    <li>Mesaj sayısı, kelime sayısı, cevap ritimleri gibi <strong>sayısal istatistikler</strong>,</li>
+    <li>Kısa, anonimleştirilmiş kanıt parçaları (link/email/telefon/sayı maskelenmiş, 180 karakterle sınırlı),</li>
+    <li>Sohbette geçen takma adlar (kullanıcının kendi tercih ettiği isimler).</li>
+  </ul>
+  <p>Tam sohbet metni veya medya hiçbir koşulda sunucuya gönderilmez.</p>
+
+  <h2>3. Anonim cihaz tanımlayıcısı</h2>
+  <p>Servis kötüye kullanımını engellemek için cihazınızda rastgele üretilmiş anonim bir kimlik (UUID) saklanır ve API isteklerinde <code>X-Device-Id</code> başlığı ile gönderilir. Bu kimlik:</p>
+  <ul>
+    <li>Reklam ağlarıyla paylaşılmaz, kullanıcı profili oluşturmak için kullanılmaz,</li>
+    <li>Yalnızca cihaz başına saatlik istek limiti uygulamak için kullanılır,</li>
+    <li>Verilerinizi sildiğinizde (aşağıya bakın) anında değişir.</li>
+  </ul>
+
+  <h2>4. Üçüncü taraf hizmet: Google Gemini</h2>
+  <p>AI yorumları Google'ın <a href="https://ai.google.dev/" target="_blank" rel="noreferrer">Gemini API</a>'si tarafından üretilir. Anonim metrik özeti Google'ın altyapısından geçer. Google'ın gizlilik politikası: <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">policies.google.com/privacy</a>.</p>
+
+  <h2>5. Verilerinizi silme hakkı</h2>
+  <p>Uygulama içindeki <strong>"Tüm verilerimi sil"</strong> bağlantısı (Dashboard ekranının altında):</p>
+  <ul>
+    <li>Cihazda saklanan tüm analiz verisini siler,</li>
+    <li>Anonim cihaz kimliğini siler,</li>
+    <li>Sunucudaki cihaz kaydını da silmek için <code>DELETE /api/device/{'{id}'}</code> çağrısı yapar.</li>
+  </ul>
+  <p>Bu işlem geri alınamaz.</p>
+
+  <h2>6. Çocuklar</h2>
+  <p>Uygulama 17 yaş ve üstü için tasarlanmıştır. 17 yaş altındaki kullanıcılardan bilerek veri toplamayız.</p>
+
+  <h2>7. İletişim</h2>
+  <p>Sorular için: <a href="mailto:kadirm1953a@gmail.com">kadirm1953a@gmail.com</a></p>
+
+  <hr />
+
+  <h1 lang="en">LoveLog · Privacy Policy (EN)</h1>
+  <p class="meta">Effective: 2026-05-09 · Last updated: 2026-05-09</p>
+
+  <p>LoveLog analyzes WhatsApp chat exports to surface relationship and friendship insights. This policy explains what data we collect and how we use it.</p>
+
+  <h2>1. Raw chat content stays on your device</h2>
+  <p>The <code>.txt</code> WhatsApp export you upload is processed entirely on-device and stored only in your device's local storage. <strong>Raw message content is never sent to our servers.</strong></p>
+
+  <h2>2. Data sent for AI insights</h2>
+  <p>For AI features (dashboard summaries, coach replies, fortune readings) we send a small anonymous NLP-metrics summary from our backend to the Google Gemini API. This summary contains:</p>
+  <ul>
+    <li>Numeric statistics (message counts, response cadence, signal totals),</li>
+    <li>Short anonymized evidence snippets (links/emails/phones/numbers masked, capped at 180 chars),</li>
+    <li>The participant aliases you chose.</li>
+  </ul>
+  <p>Full chat text and media are never transmitted.</p>
+
+  <h2>3. Anonymous device identifier</h2>
+  <p>To prevent abuse, the app stores a random anonymous UUID on your device and sends it via the <code>X-Device-Id</code> header. It is not shared with ad networks, not used for profiling, and is regenerated when you delete your data.</p>
+
+  <h2>4. Third-party service: Google Gemini</h2>
+  <p>AI text is generated by <a href="https://ai.google.dev/" target="_blank" rel="noreferrer">Google Gemini</a>. Their privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">policies.google.com/privacy</a>.</p>
+
+  <h2>5. Right to deletion</h2>
+  <p>The "Delete all my data" link inside the app (bottom of the Dashboard) clears all device-side analysis, deletes the anonymous device ID, and calls the backend to delete the device record. This action is irreversible.</p>
+
+  <h2>6. Children</h2>
+  <p>The app is intended for users aged 17 and above. We do not knowingly collect data from minors.</p>
+
+  <h2>7. Contact</h2>
+  <p>Questions: <a href="mailto:kadirm1953a@gmail.com">kadirm1953a@gmail.com</a></p>
+</body>
+</html>

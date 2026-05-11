@@ -1,8 +1,8 @@
 import React from 'react';
 import { LL, Glass } from './lovelog/tokens';
 import { Screen } from './lovelog/Screen';
-import { AnalysisResult } from '../types';
-import { askRelationshipCoach } from '../services/coachService';
+import { AnalysisResult, CoachChatTurn } from '../types';
+import { askRelationshipCoachStream, suggestQuickReplies } from '../services/coachService';
 import { RelationshipMode } from '../services/relationshipReport';
 
 interface CoachScreenProps {
@@ -18,8 +18,8 @@ interface ChatMessage {
   body: React.ReactNode;
 }
 
-const SUGGESTED = ['ayrılalım mı?', 'nasıl barışırım?', 'şu gün neden soğuktu?', 'ne yazmalıyım?'];
-const QUICK_REPLIES = ['ben attım', 'o attı', 'kimse atmadı', 'hatırlamıyorum'];
+const SUGGESTED_LOVER = ['ayrılalım mı?', 'nasıl barışırım?', 'şu gün neden soğuktu?', 'ne yazmalıyım?'];
+const SUGGESTED_FRIEND = ['trip mi atıyor?', 'hep ben mi yazıyorum?', 'neden dışlanmış hissettim?', 'ne yazmalıyım?'];
 
 const ChatBubble: React.FC<{ side: 'left' | 'right'; children: React.ReactNode }> = ({ side, children }) => {
   const isLeft = side === 'left';
@@ -73,13 +73,24 @@ export const CoachScreen: React.FC<CoachScreenProps> = ({ analysis, onBack, rela
       ];
     }
 
-    const tension = analysis.nlpSignals.totals.tensionAdjusted + analysis.nlpSignals.totals.harshAdjusted + analysis.nlpSignals.totals.jealousy;
-    const love = analysis.nlpSignals.totals.loveAdjusted + analysis.nlpSignals.totals.emotional + analysis.nlpSignals.totals.thanks;
-    const firstNote = relationMode === 'friend'
-      ? 'Bunu romantik ilişki gibi okumuyorum; destek, iç şaka, drama ve karşılıklılık ayrı ayrı bakılacak. Spesifik günü sorarsan oraya ineriz.'
-      : tension > love * 0.45
-      ? 'İlk bakışta tatlı sinyaller var ama bazı kaos izleri de göz kırpıyor. Kanka ben burada biraz korumacı moda geçerim.'
-      : 'İlk bakışta ritim tamamen karanlık değil; tatlı sinyaller daha görünür. Ama spesifik bir günü sorarsan oraya ineriz.';
+    const totals = analysis.nlpSignals.totals;
+    const total = analysis.totalMessages || 1;
+    const MIN_SAMPLE = 80;
+    const tensionRate = (totals.tensionAdjusted + totals.harshAdjusted + totals.jealousy) / total;
+    const loveRate = (totals.loveAdjusted + totals.emotional + totals.thanks) / total;
+
+    let firstNote: string;
+    if (relationMode === 'friend') {
+      firstNote = 'Bunu romantik ilişki gibi okumuyorum; destek, iç şaka, drama ve karşılıklılık ayrı ayrı bakılacak. Spesifik günü sorarsan oraya ineriz.';
+    } else if (total < MIN_SAMPLE) {
+      firstNote = 'Mesaj sayısı henüz az, tablo netleşmemiş. Spesifik bir gün veya soru ile başlayalım, oradan büyütürüz.';
+    } else if (tensionRate > 0.08 && tensionRate > loveRate * 0.6) {
+      firstNote = 'İlk bakışta tatlı sinyaller var ama gerilim oranı yüksek — burada korumacı modda konuşurum, gerek yoksa ben yumuşatırım.';
+    } else if (loveRate > 0.12 && tensionRate < loveRate * 0.4) {
+      firstNote = 'İlk okumada sıcak sinyaller baskın. Yine de spesifik günü sorarsan oraya ineriz, her ilişkide kör nokta vardır.';
+    } else {
+      firstNote = 'İlk okumada karışık bir tablo — hem sıcaklık hem gerilim var. Spesifik günü sorarsan oraya ineriz.';
+    }
 
     return [
       {
@@ -103,33 +114,75 @@ export const CoachScreen: React.FC<CoachScreenProps> = ({ analysis, onBack, rela
   }, [analysis, activeViewerName, p1, p2, relationMode]);
 
   const [messages, setMessages] = React.useState<ChatMessage[]>(intro);
+  const [coachTurns, setCoachTurns] = React.useState<CoachChatTurn[]>([]);
   const [input, setInput] = React.useState('');
-  const [showQuickReplies, setShowQuickReplies] = React.useState(true);
+  const [dynamicReplies, setDynamicReplies] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const inFlightRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
     setMessages(intro);
-    setShowQuickReplies(true);
+    setCoachTurns([]);
+    setDynamicReplies([]);
   }, [intro]);
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = async (text: string) => {
+  React.useEffect(() => () => inFlightRef.current?.abort(), []);
+
+  const sendMessage = async (text: string, queryOverride?: string) => {
     if (!text.trim()) return;
+    if (inFlightRef.current) return; // in-flight guard: çift gönderim ve StrictMode 2x çağrısını engeller
+    const ac = new AbortController();
+    inFlightRef.current = ac;
+
     const userMsg: ChatMessage = { id: Date.now(), side: 'right', body: text };
+    const query = (queryOverride || text).trim();
+    const nextTurns: CoachChatTurn[] = [...coachTurns, { role: 'user', content: query }].slice(-10);
     setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setShowQuickReplies(false);
+    setDynamicReplies([]);
     setLoading(true);
 
+    const collectedBubbles: string[] = [];
+    let detectedIntent: string | undefined;
+
     try {
-      const replyText = await askRelationshipCoach(analysis, text, relationMode, activeViewerName);
-      const reply: ChatMessage = { id: Date.now() + 1, side: 'left', body: replyText };
-      setMessages(prev => [...prev, reply]);
+      for await (const event of askRelationshipCoachStream(analysis, query, relationMode, activeViewerName, nextTurns, ac.signal)) {
+        if (ac.signal.aborted) break;
+        if (event.type === 'intent') {
+          detectedIntent = event.intent;
+        } else if (event.type === 'bubble' && event.text) {
+          const bubbleText = event.text;
+          collectedBubbles.push(bubbleText);
+          setMessages(prev => [...prev, { id: Date.now() + Math.random(), side: 'left', body: bubbleText }]);
+        }
+      }
+
+      if (ac.signal.aborted) return;
+
+      const fullReply = collectedBubbles.join('\n\n');
+      const lastUserTurn = nextTurns[nextTurns.length - 1];
+      const taggedUserTurn: CoachChatTurn = { ...lastUserTurn, intent: detectedIntent };
+      const assistantTurn: CoachChatTurn = { role: 'assistant', content: fullReply, intent: detectedIntent };
+      setCoachTurns([...nextTurns.slice(0, -1), taggedUserTurn, assistantTurn].slice(-10));
+
+      const recent = analysis?.normalizedMessages.slice(-6).map(m => ({
+        date: m.dateKey,
+        speaker: m.author,
+        text: m.content,
+      })) ?? [];
+      suggestQuickReplies(query, fullReply, recent, ac.signal).then(setDynamicReplies).catch(() => {});
+    } catch (err) {
+      if ((err as any)?.name !== 'AbortError') {
+        console.error('coach send failed:', err);
+        setMessages(prev => [...prev, { id: Date.now() + Math.random(), side: 'left', body: 'Bağlantıda gecikme oldu, tekrar dener misin?' }]);
+      }
     } finally {
+      if (inFlightRef.current === ac) inFlightRef.current = null;
       setLoading(false);
     }
   };
@@ -274,9 +327,9 @@ export const CoachScreen: React.FC<CoachScreenProps> = ({ analysis, onBack, rela
             </ChatBubble>
           )}
 
-          {showQuickReplies && (
+          {!loading && dynamicReplies.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-              {QUICK_REPLIES.map(c => (
+              {dynamicReplies.map(c => (
                 <button
                   key={c}
                   onClick={() => sendMessage(c)}
@@ -310,7 +363,7 @@ export const CoachScreen: React.FC<CoachScreenProps> = ({ analysis, onBack, rela
             scrollbarWidth: 'none',
           }}
         >
-          {SUGGESTED.map(q => (
+          {(relationMode === 'friend' ? SUGGESTED_FRIEND : SUGGESTED_LOVER).map(q => (
             <button
               key={q}
               onClick={() => sendMessage(q)}

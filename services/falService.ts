@@ -1,6 +1,6 @@
-import { GoogleGenAI } from '@google/genai';
 import { AnalysisResult } from '../types';
 import { RelationshipMode } from './relationshipReport';
+import { llmGenerate, LlmUnavailableError } from './apiClient';
 
 export type FalMode = 'tarot' | 'kahve' | 'burc' | 'el';
 
@@ -9,9 +9,6 @@ export interface FalReading {
   reading: string;
   symbols: Array<{ label: string; value: string; note: string }>;
 }
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 const pick = <T,>(items: T[], seed: number): T => items[Math.abs(seed) % items.length];
 
@@ -57,7 +54,7 @@ const fallbackReading = (analysis: AnalysisResult | null, mode: FalMode, relatio
 };
 
 export const generateFalReading = async (analysis: AnalysisResult | null, mode: FalMode, relationMode: RelationshipMode = 'lover', nonce = 0): Promise<FalReading> => {
-  if (!apiKey || !analysis) return fallbackReading(analysis, mode, relationMode, nonce);
+  if (!analysis) return fallbackReading(analysis, mode, relationMode, nonce);
 
   const prompt = `
 Sen LoveLog uygulamasında eğlenceli ama veriye dayalı Türkçe fal yorumcususun.
@@ -82,18 +79,17 @@ Sadece şu JSON formatında yanıt ver:
 `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await llmGenerate({
       model: 'gemini-2.5-flash',
-      contents: prompt,
+      prompt,
       config: {
         responseMimeType: 'application/json',
         temperature: 0.9,
         maxOutputTokens: 700,
       },
     });
-    const text = response.text;
-    if (!text) return fallbackReading(analysis, mode, relationMode, nonce);
-    const parsed = JSON.parse(text) as FalReading;
+    if (!response.text) return fallbackReading(analysis, mode, relationMode, nonce);
+    const parsed = JSON.parse(response.text) as FalReading;
     const fallback = fallbackReading(analysis, mode, relationMode, nonce);
     return {
       title: parsed.title || fallback.title,
@@ -101,7 +97,7 @@ Sadece şu JSON formatında yanıt ver:
       symbols: Array.isArray(parsed.symbols) && parsed.symbols.length ? parsed.symbols.slice(0, 4) : fallback.symbols,
     };
   } catch (error) {
-    console.error('Fal LLM Error:', error);
+    if (!(error instanceof LlmUnavailableError)) console.error('Fal LLM Error:', error);
     return fallbackReading(analysis, mode, relationMode, nonce);
   }
 };

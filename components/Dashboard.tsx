@@ -12,9 +12,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AnalysisResult, BehavioralPattern, GeminiInsight } from '../types';
+import { AnalysisResult, BehavioralPattern, ConversationProfile, GeminiInsight, RelationshipPattern } from '../types';
 import { generateRelationshipInsights } from '../services/geminiService';
 import { buildRelationshipReport, CalendarDayReport, RelationshipMode, RelationshipReport } from '../services/relationshipReport';
+import { shareReport } from '../services/sharing';
 import { LL, Glass, Heart, Sparkle } from './lovelog/tokens';
 import { Screen } from './lovelog/Screen';
 
@@ -396,6 +397,140 @@ const PatternsSection: React.FC<{ patterns: BehavioralPattern[] }> = ({ patterns
   </div>
 );
 
+// İlişki Dinamiği — coachProfile'tan beslenen kartlar. Bunlar koç ekranında
+// kullanılan signal/pattern/episode datasının görünür hali.
+const RELATIONSHIP_PATTERN_LABEL: Partial<Record<RelationshipPattern['type'], { tr: string; why: string }>> = {
+  gaslighting_like: { tr: 'Gaslighting-benzeri an\'lar', why: 'Gerçekliğin küçümsenmesi tekrar ediyorsa kendi sezgine güvenmek zorlaşır.' },
+  control_or_surveillance: { tr: 'Kontrol / Kıskançlık', why: 'Konum, kimle konuştuğun, ne giydiğin gibi konularda baskı kişilik hakkı meselesidir.' },
+  love_bombing_like: { tr: 'Telafi-jest döngüsü', why: 'Kırıcı andan sonra yoğun sıcaklık geliyorsa bu lovebombing-benzeri bir telafi olabilir.' },
+  hot_cold_cycle: { tr: 'Sıcak-soğuk döngüsü', why: 'Sıcaklık sonrası ani soğuma bağımlılık hissi yaratabilir.' },
+  slow_fade: { tr: 'Geri çekilme örüntüsü', why: 'Mesaj payı, sıcaklık veya dönüş hızı zayıflıyorsa bu yavaş geri çekilme sinyali olabilir.' },
+  repair_imbalance: { tr: 'Onarım dengesizliği', why: 'Tartışmadan sonra hep aynı kişi adım atıyorsa ilişki yükü tek tarafa biniyor olabilir.' },
+  emotional_labor_imbalance: { tr: 'Duygusal emek dengesizliği', why: 'Açıklama/soru/toparlama tarafını hep biri taşıyorsa sürdürülebilir değil.' },
+  future_faking_like: { tr: 'Future-faking havası', why: 'Plan vaadi var ama iptal de tekrar ediyorsa söz-davranış farkına bakmak gerekir.' },
+  guilt_tripping_like: { tr: 'Suçluluk yükleme', why: 'Sürekli "senin yüzünden" tonu sınırları yumuşatmak için kullanılabilir.' },
+  jealousy_spiral: { tr: 'Kıskançlık spirali', why: 'Tekrar eden sahiplenici tepkiler güven yerine baskı yaratır.' },
+  attack_apology_cycle: { tr: 'Saldırı-özür döngüsü', why: 'Sert söz sonrası hızlı özür örüntü olarak yerleşirse davranış değişmez.' },
+  reciprocity_drop: { tr: 'Karşılıklılık düşüşü', why: 'Bir taraf bariz daha az yatırım yapıyorsa bunu okumak gerek.' },
+  plan_cancel_pattern: { tr: 'Plan-iptal örüntüsü', why: 'Tekrarlayan "yarın yaparız" sözleri zaman içinde güveni eritir.' },
+};
+
+const RelMetricGauge: React.FC<{ label: string; value: number; hint?: string }> = ({ label, value, hint }) => {
+  const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
+  const tone = severityTone(value);
+  return (
+    <Glass style={{ padding: 12, borderRadius: 16, minWidth: 0 }}>
+      <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
+        <div className="ll-serif" style={{ fontSize: 22, fontStyle: 'italic', color: tone }}>%{pct}</div>
+      </div>
+      <div style={{ height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginTop: 8 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: tone }} />
+      </div>
+      {hint && <div style={{ fontSize: 10, color: LL.fgMuted, lineHeight: 1.4, marginTop: 8 }}>{hint}</div>}
+    </Glass>
+  );
+};
+
+const RelationshipPatternCard: React.FC<{ pattern: RelationshipPattern }> = ({ pattern }) => {
+  const meta = RELATIONSHIP_PATTERN_LABEL[pattern.type] || { tr: pattern.type, why: '' };
+  const score = (pattern.severity + pattern.confidence) / 2;
+  const tone = severityTone(score);
+  const pct = Math.max(8, Math.round(pattern.severity * 100));
+  return (
+    <Glass style={{ padding: 14, borderRadius: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <div className="ll-serif" style={{ fontSize: 17, fontStyle: 'italic', lineHeight: 1.2 }}>{meta.tr}</div>
+        <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+          güven %{Math.round(pattern.confidence * 100)}
+        </div>
+      </div>
+      <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginTop: 10 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: tone }} />
+      </div>
+      <div style={{ fontSize: 12, color: LL.fgMuted, lineHeight: 1.45, marginTop: 10 }}>{pattern.summary}</div>
+      {meta.why && (
+        <div style={{ fontSize: 11, color: LL.fgDim, lineHeight: 1.4, marginTop: 6, fontStyle: 'italic' }}>
+          Neden önemli: {meta.why}
+        </div>
+      )}
+      {pattern.evidence.length > 0 && (
+        <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+          {pattern.evidence.slice(0, 2).map((ev, idx) => (
+            <div key={`${ev.messageId}-${idx}`} style={{ padding: '8px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.045)' }}>
+              <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+                {ev.timestamp.slice(0, 10)} · {ev.speaker}
+              </div>
+              <div style={{ fontSize: 12, color: LL.fg, marginTop: 3, lineHeight: 1.4 }}>"{ev.quoteMasked}"</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Glass>
+  );
+};
+
+const phaseTone = (label: string): string => {
+  if (label.startsWith('gerilim')) return LL.red;
+  if (label.startsWith('geri çekilme')) return LL.gold;
+  if (label.startsWith('yakınlık')) return LL.mint;
+  return LL.lavender;
+};
+
+const PhasesStrip: React.FC<{ phases: ConversationProfile['relationshipPhases'] }> = ({ phases }) => {
+  if (!phases.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+      {phases.map(phase => {
+        const tone = phaseTone(phase.label);
+        return (
+          <Glass key={phase.period} style={{ padding: 10, borderRadius: 14, minWidth: 140, flex: '0 0 auto' }}>
+            <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 0.6 }}>{phase.period}</div>
+            <div className="ll-serif" style={{ fontSize: 14, fontStyle: 'italic', color: tone, marginTop: 4 }}>{phase.label}</div>
+            <div style={{ fontSize: 10, color: LL.fgMuted, lineHeight: 1.35, marginTop: 6 }}>
+              {phase.dominantSignals.join(' · ')}
+            </div>
+          </Glass>
+        );
+      })}
+    </div>
+  );
+};
+
+const RelationshipDynamicsSection: React.FC<{ profile: ConversationProfile }> = ({ profile }) => {
+  const m = profile.globalMetrics;
+  const significant = profile.topPatterns.filter(p => (p.severity + p.confidence) >= 0.6).slice(0, 6);
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+        <RelMetricGauge label="Kontrol / Kıskançlık" value={m.controlJealousyRisk} hint="Yüksekse kişisel sınır ihlali sinyali var demektir." />
+        <RelMetricGauge label="Ghosting / Geri çekilme" value={m.ghostingRisk} hint="Mesaj payı + sıcaklık + dönüş gecikmesi düşüşü." />
+        <RelMetricGauge label="Tek taraflılık" value={m.oneSidednessScore} hint="Kim ne kadar yatırım yapıyor; %0 dengeli, %100 tek taraflı." />
+        <RelMetricGauge label="Çatışma yoğunluğu" value={m.conflictIntensity} hint="Suçlama / sert dil / küçümseme sıklığı." />
+        <RelMetricGauge label="Onarım dengesi" value={1 - m.repairBalance} hint="Yüksekse hep aynı kişi özür / telafi atıyor." />
+        <RelMetricGauge label="Sıcak-soğuk skoru" value={m.hotColdScore} hint="Sıcaklık sonrası ani soğuma örüntüsü." />
+      </div>
+
+      {significant.length > 0 && (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {significant.map((p, idx) => (
+            <RelationshipPatternCard key={`${p.type}-${idx}`} pattern={p} />
+          ))}
+        </div>
+      )}
+
+      {profile.relationshipPhases.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, color: LL.fgDim, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+            İlişki dönemleri
+          </div>
+          <PhasesStrip phases={profile.relationshipPhases} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Timeline: React.FC<{ report: RelationshipReport }> = ({ report }) => {
   const items = [
     report.timeline.mostActiveDay,
@@ -728,7 +863,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
     };
   }, [analysis, relationMode]);
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    void shareReport({ report, score, relationMode, viewerName, aiInsight });
+  };
 
   return (
     <Screen withTabBar starDensity={70} maxWidth={1120}>
@@ -785,6 +922,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
           <>
             <SectionTitle eyebrow="Davranış" title="Tespit Edilen Desenler" />
             <PatternsSection patterns={analysis.patterns} />
+          </>
+        )}
+
+        {analysis.coachProfile && (
+          <>
+            <SectionTitle eyebrow="Dinamik" title="İlişki Dinamiği" />
+            <RelationshipDynamicsSection profile={analysis.coachProfile} />
           </>
         )}
 
@@ -870,6 +1014,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
         <Glass style={{ padding: 14, borderRadius: 18, marginTop: 14, fontSize: 11.5, color: LL.fgMuted, lineHeight: 1.55 }}>
           {aiInsight?.carefulAdvice || report.narratives.shortNote}
         </Glass>
+
+        {/* Mağaza zorunluluğu (Play 2024+ ve App Store privacy): görünür, ayrı bir veri silme yolu. */}
+        <div
+          className="ll-no-print"
+          style={{
+            marginTop: 18,
+            padding: '14px 16px',
+            borderRadius: 16,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            fontSize: 11.5,
+            color: LL.fgMuted,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontSize: 12, color: LL.fg, fontWeight: 600 }}>Gizlilik</div>
+          <div>Sohbet verin yalnızca bu cihazda saklanır. AI yorumları için yalnızca anonim metrik özeti sunucumuza iletilir; ham mesajlar gönderilmez.</div>
+          <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+            <a
+              href="/privacy.html"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: LL.gold, textDecoration: 'none', fontWeight: 600 }}
+            >
+              Gizlilik Politikası
+            </a>
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined' && !window.confirm('Tüm cihaz verileri silinsin mi? Bu işlem geri alınamaz.')) return;
+                reset();
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: LL.red,
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: 11.5,
+                fontFamily: 'inherit',
+              }}
+            >
+              Tüm verilerimi sil
+            </button>
+          </div>
+        </div>
       </div>
       <DayModal day={selectedDay} report={report} onClose={() => setSelectedDay(null)} />
     </Screen>

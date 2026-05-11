@@ -17,6 +17,12 @@
         color: #fff5fb;
         font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       }
+      /* iOS notch / home indicator bölgelerinin altına da koyu arkaplan uzansın. */
+      body { background-color: #1a0b2e; }
+      :root {
+        --ll-safe-top: env(safe-area-inset-top, 0px);
+        --ll-safe-bottom: env(safe-area-inset-bottom, 0px);
+      }
       *, *::before, *::after { box-sizing: border-box; }
       .ll-serif { font-family: 'Fraunces', Georgia, serif; }
       .ll-cosmic-bg {
@@ -112,12 +118,14 @@
         }
       }
     </style>
+    <!-- Vite production build her şeyi bundle'a dahil ediyor; bu importmap sadece
+         no-build (saf script) modunda kullanılırsa gereklidir. Capacitor paketi
+         bu HTML'i dist'ten serve eder, importmap aktif rolde değil. -->
     <script type="importmap">
 {
   "imports": {
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "recharts": "https://aistudiocdn.com/recharts@^3.4.1",
     "@mlc-ai/web-llm": "https://aistudiocdn.com/@mlc-ai/web-llm@^0.2.80"

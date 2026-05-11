@@ -22,7 +22,8 @@ const SIGNAL_KEYS: RelationshipSignalKey[] = [
   'stonewalling', 'apology', 'accountability', 'blameShifting', 'repairAttempt',
   'planning', 'cancellation', 'futureTalk', 'sexualOrRomanticIntimacy',
   'boundarySetting', 'boundaryViolation', 'humor', 'sarcasm', 'harshLanguage',
-  'manipulationLike',
+  'manipulationLike', 'friendSupport', 'insideJoke', 'friendCheckIn',
+  'friendReciprocity', 'friendExclusion', 'friendDrama',
 ];
 
 const LEXICONS: Record<RelationshipSignalKey, string[]> = {
@@ -53,6 +54,12 @@ const LEXICONS: Record<RelationshipSignalKey, string[]> = {
   sarcasm: ['aynen kesin', 'tabii canım', 'bravo', 'harikasın gerçekten'],
   harshLanguage: ['aptal', 'salak', 'mal', 'nefret', 'defol', 'siktir', 'lanet', 'yalancı'],
   manipulationLike: ['uyduruyorsun', 'öyle bir şey olmadı', 'çok hassassın', 'senin yüzünden', 'bunu bana nasıl yaparsın', 'ben zaten kötüyüm'],
+  friendSupport: ['yanındayım', 'arkandayım', 'hallederiz', 'dert etme', 'iyi misin', 'anlat bana', 'dinliyorum', 'geçmiş olsun', 'gurur duydum', 'sen yaparsın'],
+  insideJoke: ['kanka', 'bestie', 'knk', 'bizim şaka', 'iç şaka', 'patladım', 'yarıldım', 'ahahah', 'hahah', 'meme', 'caps'],
+  friendCheckIn: ['nasılsın', 'iyi misin', 'ne yaptın', 'eve vardın mı', 'haber ver', 'merak ettim', 'günün nasıl geçti'],
+  friendReciprocity: ['ben de gelirim', 'ben de varım', 'beraber yapalım', 'sana da anlatayım', 'sıra sende', 'sen seç', 'ben ayarlarım'],
+  friendExclusion: ['beni çağırmadınız', 'bensiz gittiniz', 'haber vermediniz', 'beni unuttunuz', 'gruptan çıktım', 'dışladınız', 'beni yok saydın'],
+  friendDrama: ['trip', 'küslük', 'küstüm', 'soğuk yaptın', 'görüldü attın', 'cevap vermedin', 'alınganlık', 'drama', 'dedikodu', 'arkamdan'],
 };
 
 const REGEXES = Object.fromEntries(
@@ -136,10 +143,10 @@ export const extractRelationshipSignals = (
   }
 
   const warmthScore = signals.affection.score + signals.longing.score + signals.reassurance.score + signals.futureTalk.score * 0.5;
-  const conflictScore = signals.criticism.score + signals.contempt.score + signals.defensiveness.score + signals.harshLanguage.score + signals.blameShifting.score + signals.manipulationLike.score;
-  const avoidanceScore = signals.avoidance.score + signals.withdrawal.score + signals.stonewalling.score;
+  const conflictScore = signals.criticism.score + signals.contempt.score + signals.defensiveness.score + signals.harshLanguage.score + signals.blameShifting.score + signals.manipulationLike.score + signals.friendDrama.score * 0.7 + signals.friendExclusion.score * 0.6;
+  const avoidanceScore = signals.avoidance.score + signals.withdrawal.score + signals.stonewalling.score + signals.friendExclusion.score * 0.25;
   const controlScore = signals.control.score + signals.jealousy.score + signals.boundaryViolation.score;
-  const repairScore = signals.apology.score + signals.accountability.score + signals.repairAttempt.score;
+  const repairScore = signals.apology.score + signals.accountability.score + signals.repairAttempt.score + signals.friendSupport.score * 0.35 + signals.friendCheckIn.score * 0.25;
 
   return {
     messageId: String(message.id),

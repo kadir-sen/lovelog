@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { Dashboard } from './components/Dashboard';
 import { HomeScreen } from './components/HomeScreen';
@@ -10,6 +10,8 @@ import { RelationMode, RelationSelectScreen } from './components/RelationSelectS
 import { TabBar, TabId } from './components/lovelog/TabBar';
 import { parseChatFile } from './services/parser';
 import { analyzeChat } from './services/analytics';
+import { buildConversationProfileAsync } from './services/relationshipMemory';
+import { loadPersistedState, savePersistedState, clearAllDeviceData } from './services/persistence';
 import { AnalysisResult, Message } from './types';
 
 type Route = 'home' | 'upload' | 'relation' | 'participant' | 'analyzing' | 'analyze' | 'fal' | 'coach';
@@ -36,6 +38,26 @@ const App: React.FC = () => {
   const [viewerName, setViewerName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progressStage, setProgressStage] = useState<string | null>(null);
+  const hydrated = useRef(false);
+
+  // Cihazdaki son analizi boot'ta yükle.
+  useEffect(() => {
+    const saved = loadPersistedState();
+    if (saved) {
+      setAnalysis(saved.analysis);
+      setRelationMode(saved.relationMode);
+      setViewerName(saved.viewerName);
+    }
+    hydrated.current = true;
+  }, []);
+
+  // Analiz değiştiğinde diske yaz (boot hidrasyonundan sonra).
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (analysis) {
+      savePersistedState({ analysis, relationMode, viewerName });
+    }
+  }, [analysis, relationMode, viewerName]);
 
   const yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -98,9 +120,19 @@ const App: React.FC = () => {
       await yieldToUi();
       const result = analyzeChat(pendingMessages, setProgressStage);
 
+      // Koç ekranındaki ağır lazy iş (signal/pattern/episode regex taraması)
+      // analiz fazına çekilir. Kullanıcı bu ekranda zaten bekliyor; koç ekranı
+      // açılışı saniyeler yerine ms'lere iner.
+      const coachProfile = await buildConversationProfileAsync(
+        result,
+        name,
+        relationMode,
+        setProgressStage,
+      );
+
       setProgressStage(relationMode === 'friend' ? 'Bestie raporu hazırlanıyor' : 'Dashboard hazırlanıyor');
       await yieldToUi();
-      setAnalysis(result);
+      setAnalysis({ ...result, coachProfile });
       setPendingMessages(null);
       setProgressStage(null);
       setRoute('analyze');
@@ -118,6 +150,7 @@ const App: React.FC = () => {
     setViewerName(null);
     setError(null);
     setProgressStage(null);
+    void clearAllDeviceData();
     setRoute('upload');
   };
 
