@@ -6,6 +6,7 @@ import {
   NormalizedMessage,
   RelationshipPattern,
 } from '../types';
+import { RelationshipMode } from './relationshipReport';
 import { classifyDialogueActs } from './dialogueActs';
 import { extractRelationshipEpisodes } from './episodeExtractor';
 import { extractRelationshipSignals } from './relationshipSignals';
@@ -23,18 +24,18 @@ const evidence = (m: MessageInsight, reason: string): EvidenceItem => ({
   reason,
 });
 
-const cacheKey = (messages: NormalizedMessage[]): string => {
+const cacheKey = (messages: NormalizedMessage[], viewerName?: string | null, relationMode: RelationshipMode = 'lover'): string => {
   const first = messages[0];
   const last = messages[messages.length - 1];
   const checksum = messages
     .filter((_, i) => i % Math.max(1, Math.floor(messages.length / 20)) === 0)
     .map(m => `${m.author}:${m.content.length}:${m.content.slice(0, 8)}`)
     .join('|');
-  return `${messages.length}:${first?.date.toISOString()}:${last?.date.toISOString()}:${checksum}`;
+  return `${relationMode}:${viewerName || 'auto'}:${messages.length}:${first?.date.toISOString()}:${last?.date.toISOString()}:${checksum}`;
 };
 
-const buildInsights = (analysis: AnalysisResult): MessageInsight[] => {
-  const viewer = analysis.participants[0]?.name;
+const buildInsights = (analysis: AnalysisResult, viewerName?: string | null): MessageInsight[] => {
+  const viewer = viewerName || analysis.participants[0]?.name;
   const partner = analysis.participants.find(p => p.name !== viewer)?.name;
   const insights = analysis.normalizedMessages.map((msg, index) => {
     const previous = analysis.normalizedMessages[index - 1];
@@ -146,6 +147,31 @@ const detectAdvancedPatterns = (analysis: AnalysisResult, insights: MessageInsig
     patterns.push(pattern('hot_cold_cycle', 'Yoğun sıcaklık sonrası kısa cevap/geri çekilme en az iki kez tekrar etmiş; hot-cold döngüsü sinyali var.', 0.68, coldAfter.length / 5, coldAfter.slice(0, 4).map(i => evidence(i, 'sıcak dönem sonrası soğuma'))));
   }
 
+  const harmThenCharm: Array<{ harm: MessageInsight; charm: MessageInsight }> = [];
+  insights.forEach((item, index) => {
+    if (item.warmthScore + item.repairScore < 1.6) return;
+    const previousHarm = insights
+      .slice(Math.max(0, index - 24), index)
+      .reverse()
+      .find(prev =>
+        prev.speaker === item.speaker &&
+        (prev.conflictScore > 1 || prev.controlScore > 0.7 || prev.signals.manipulationLike.score > 0.5 || prev.avoidanceScore > 0.9) &&
+        (new Date(item.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 60000 <= 7 * 24 * 60
+      );
+    if (previousHarm) harmThenCharm.push({ harm: previousHarm, charm: item });
+  });
+  if (harmThenCharm.length >= 2) {
+    patterns.push(pattern(
+      'love_bombing_like',
+      'Kırıcı/kaçınan/kontrolcü sinyalden sonra yoğun sıcaklık, özür veya jest benzeri dönüşler tekrar ediyor; bu lovebombing-benzeri telafi döngüsü olabilir.',
+      0.62 + Math.min(0.25, harmThenCharm.length / 12),
+      harmThenCharm.length / 8,
+      harmThenCharm.slice(0, 3).flatMap(pair => [evidence(pair.harm, 'önce zarar/kaçınma/kontrol sinyali'), evidence(pair.charm, 'sonra yoğun sıcaklık/telafi sinyali')]),
+      insights.filter(i => i.speaker === harmThenCharm[0]?.charm.speaker && i.signals.accountability.score > 0.5).slice(0, 2).map(i => evidence(i, 'karşı kanıt: sorumluluk alma sinyali')),
+      { cycles: harmThenCharm.length }
+    ));
+  }
+
   participants.forEach(person => {
     const mine = insights.filter(i => i.speaker === person);
     const control = mine.filter(i => i.controlScore > 0.8);
@@ -207,36 +233,86 @@ const metrics = (analysis: AnalysisResult, insights: MessageInsight[], patterns:
   };
 };
 
-export const buildConversationProfile = (analysis: AnalysisResult): ConversationProfile => {
-  const key = cacheKey(analysis.normalizedMessages);
+const assembleProfile = (
+  analysis: AnalysisResult,
+  insights: MessageInsight[],
+  episodes: ReturnType<typeof extractRelationshipEpisodes>,
+  patterns: RelationshipPattern[],
+  weeklyTrends: Array<Record<string, number | string>>,
+  monthlyTrends: Array<Record<string, number | string>>,
+): ConversationProfile => ({
+  dateRange: {
+    start: analysis.dateRange.start.toISOString().slice(0, 10),
+    end: analysis.dateRange.end.toISOString().slice(0, 10),
+  },
+  totalMessages: analysis.totalMessages,
+  participantStats: participantStats(analysis, insights),
+  relationshipPhases: monthlyTrends.map(row => ({
+    period: String(row.period),
+    label: Number(row.warmth) > Number(row.conflict) + Number(row.avoidance) ? 'yakınlık dönemi' : Number(row.conflict) > 0.7 ? 'gerilim dönemi' : Number(row.avoidance) > 0.5 ? 'geri çekilme dönemi' : 'dengeli/sakin dönem',
+    dominantSignals: ['warmth', 'conflict', 'avoidance'].sort((x, y) => Number(row[y]) - Number(row[x])).slice(0, 2),
+    summary: `${row.period}: sıcaklık ${row.warmth}, gerilim ${row.conflict}, kaçınma ${row.avoidance}.`,
+  })),
+  weeklyTrends,
+  monthlyTrends,
+  globalMetrics: metrics(analysis, insights, patterns),
+  topPatterns: patterns,
+  keyEpisodes: episodes,
+  messageInsights: insights,
+});
+
+export const buildConversationProfile = (
+  analysis: AnalysisResult,
+  viewerName?: string | null,
+  relationMode: RelationshipMode = 'lover'
+): ConversationProfile => {
+  const key = cacheKey(analysis.normalizedMessages, viewerName, relationMode);
   const cached = cache.get(key);
   if (cached) return cached;
 
-  const insights = buildInsights(analysis);
+  const insights = buildInsights(analysis, viewerName);
   const episodes = extractRelationshipEpisodes(insights);
   const patterns = detectAdvancedPatterns(analysis, insights);
   const weeklyTrends = groupByPeriod(insights, 'week');
   const monthlyTrends = groupByPeriod(insights, 'month');
-  const profile: ConversationProfile = {
-    dateRange: {
-      start: analysis.dateRange.start.toISOString().slice(0, 10),
-      end: analysis.dateRange.end.toISOString().slice(0, 10),
-    },
-    totalMessages: analysis.totalMessages,
-    participantStats: participantStats(analysis, insights),
-    relationshipPhases: monthlyTrends.map(row => ({
-      period: String(row.period),
-      label: Number(row.warmth) > Number(row.conflict) + Number(row.avoidance) ? 'yakınlık dönemi' : Number(row.conflict) > 0.7 ? 'gerilim dönemi' : Number(row.avoidance) > 0.5 ? 'geri çekilme dönemi' : 'dengeli/sakin dönem',
-      dominantSignals: ['warmth', 'conflict', 'avoidance'].sort((x, y) => Number(row[y]) - Number(row[x])).slice(0, 2),
-      summary: `${row.period}: sıcaklık ${row.warmth}, gerilim ${row.conflict}, kaçınma ${row.avoidance}.`,
-    })),
-    weeklyTrends,
-    monthlyTrends,
-    globalMetrics: metrics(analysis, insights, patterns),
-    topPatterns: patterns,
-    keyEpisodes: episodes,
-    messageInsights: insights,
-  };
+  const profile = assembleProfile(analysis, insights, episodes, patterns, weeklyTrends, monthlyTrends);
+  cache.set(key, profile);
+  return profile;
+};
+
+// Async sürüm: ağır alt-adımlar arasında setTimeout(0) ile ana thread'i serbest
+// bırakır ve onProgress'i çağırır. Bu sayede analiz ekranındaki "yapılıyor..."
+// metni gerçekten paint olur ve UI 5-15 saniyelik blocking JS yaşamaz.
+const yieldToUi = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+export const buildConversationProfileAsync = async (
+  analysis: AnalysisResult,
+  viewerName?: string | null,
+  relationMode: RelationshipMode = 'lover',
+  onProgress?: (stage: string) => void,
+): Promise<ConversationProfile> => {
+  const key = cacheKey(analysis.normalizedMessages, viewerName, relationMode);
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  onProgress?.('İlişki sinyalleri çıkarılıyor');
+  await yieldToUi();
+  const insights = buildInsights(analysis, viewerName);
+
+  onProgress?.('Onarım/çatışma dönemleri taranıyor');
+  await yieldToUi();
+  const episodes = extractRelationshipEpisodes(insights);
+
+  onProgress?.('İleri davranış örüntüleri taranıyor');
+  await yieldToUi();
+  const patterns = detectAdvancedPatterns(analysis, insights);
+
+  onProgress?.('Trend ve metrikler hesaplanıyor');
+  await yieldToUi();
+  const weeklyTrends = groupByPeriod(insights, 'week');
+  const monthlyTrends = groupByPeriod(insights, 'month');
+
+  const profile = assembleProfile(analysis, insights, episodes, patterns, weeklyTrends, monthlyTrends);
   cache.set(key, profile);
   return profile;
 };

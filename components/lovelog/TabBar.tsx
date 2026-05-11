@@ -35,9 +35,9 @@ export const TabBar: React.FC<TabBarProps> = ({ active, onChange, hasAnalysis = 
     <div
       style={{
         position: 'fixed',
-        bottom: 16,
-        left: 16,
-        right: 16,
+        bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+        left: 'calc(16px + env(safe-area-inset-left, 0px))',
+        right: 'calc(16px + env(safe-area-inset-right, 0px))',
         maxWidth: 480,
         margin: '0 auto',
         height: 68,

@@ -1,9 +1,6 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, GeminiInsight } from "../types";
 import { RelationshipMode } from "./relationshipReport";
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+import { llmGenerate, LlmUnavailableError } from "./apiClient";
 
 const unavailableInsight = (reason: string): GeminiInsight => ({
   summary: reason,
@@ -24,11 +21,29 @@ const unavailableInsight = (reason: string): GeminiInsight => ({
   carefulAdvice: "Bu analiz sohbet metriklerinden türetilen eğlenceli bir yorumdur; kesin hüküm değildir."
 });
 
-export const generateRelationshipInsights = async (analysis: AnalysisResult, mode: RelationshipMode = 'lover'): Promise<GeminiInsight> => {
-  if (!apiKey) {
-    return unavailableInsight("API Anahtarı eksik, yapay zeka analizi yapılamıyor.");
+const insightSchema = {
+  type: 'OBJECT',
+  properties: {
+    summary: { type: 'STRING' },
+    negativeSummary: { type: 'STRING' },
+    mostEmotional: { type: 'STRING' },
+    mostCurious: { type: 'STRING' },
+    mostInterested: { type: 'STRING' },
+    mostArgumentative: { type: 'STRING' },
+    mostUnfair: { type: 'STRING' },
+    mostToxic: { type: 'STRING' },
+    funFact: { type: 'STRING' },
+    relationshipTimeline: { type: 'STRING' },
+    loveLanguageAnalysis: { type: 'STRING' },
+    communicationBalance: { type: 'STRING' },
+    responseRhythm: { type: 'STRING' },
+    tensionAnalysis: { type: 'STRING' },
+    evidenceBasedFun: { type: 'STRING' },
+    carefulAdvice: { type: 'STRING' }
   }
+};
 
+export const generateRelationshipInsights = async (analysis: AnalysisResult, mode: RelationshipMode = 'lover'): Promise<GeminiInsight> => {
   const compactSummary = JSON.stringify(analysis.llmSummary);
 
   const prompt = `
@@ -68,41 +83,22 @@ export const generateRelationshipInsights = async (analysis: AnalysisResult, mod
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await llmGenerate({
       model: 'gemini-2.5-flash',
-      contents: prompt,
+      prompt,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            summary: { type: Type.STRING },
-            negativeSummary: { type: Type.STRING },
-            mostEmotional: { type: Type.STRING },
-            mostCurious: { type: Type.STRING },
-            mostInterested: { type: Type.STRING },
-            mostArgumentative: { type: Type.STRING },
-            mostUnfair: { type: Type.STRING },
-            mostToxic: { type: Type.STRING },
-            funFact: { type: Type.STRING },
-            relationshipTimeline: { type: Type.STRING },
-            loveLanguageAnalysis: { type: Type.STRING },
-            communicationBalance: { type: Type.STRING },
-            responseRhythm: { type: Type.STRING },
-            tensionAnalysis: { type: Type.STRING },
-            evidenceBasedFun: { type: Type.STRING },
-            carefulAdvice: { type: Type.STRING }
-          }
-        }
-      }
+        responseMimeType: 'application/json',
+        responseSchema: insightSchema,
+      },
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Boş yanıt");
-
-    return JSON.parse(text) as GeminiInsight;
+    if (!response.text) throw new Error("Boş yanıt");
+    return JSON.parse(response.text) as GeminiInsight;
   } catch (error) {
-    console.error("Gemini Error:", error);
+    if (error instanceof LlmUnavailableError) {
+      return unavailableInsight("Yapay zeka servisine ulaşılamıyor.");
+    }
+    console.error("LLM Error:", error);
     return unavailableInsight("Yapay zeka şu anda yanıt veremiyor, daha sonra tekrar deneyin.");
   }
 };

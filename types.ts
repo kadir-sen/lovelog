@@ -258,6 +258,10 @@ export interface AnalysisResult {
   patterns: BehavioralPattern[];
   llmSummary: LlmCompactSummary;
   sampleConversation: string;
+  // Coach screen için önceden hesaplanmış ilişki/sinyal profili.
+  // analyzeChat sırasında viewerName + relationMode bilindiğinde doldurulur;
+  // koç ekranı bu varsa lazy build yapmaz (saniyeler → ms).
+  coachProfile?: ConversationProfile;
 }
 
 export type NormalizedSpeaker = 'user' | 'partner' | 'other';
@@ -305,7 +309,13 @@ export type RelationshipSignalKey =
   | 'humor'
   | 'sarcasm'
   | 'harshLanguage'
-  | 'manipulationLike';
+  | 'manipulationLike'
+  | 'friendSupport'
+  | 'insideJoke'
+  | 'friendCheckIn'
+  | 'friendReciprocity'
+  | 'friendExclusion'
+  | 'friendDrama';
 
 export interface MessageSignalDetail {
   count: number;
@@ -485,15 +495,35 @@ export interface CoachQueryPlan {
     includeLongSilences: boolean;
     includeCounterEvidence: boolean;
   };
-  answerStyle: 'soft' | 'direct' | 'protective' | 'analytical' | 'balanced';
+  answerStyle: 'soft' | 'direct' | 'protective' | 'analytical' | 'balanced' | 'decision';
   safetyMode: 'normal' | 'emotional_distress' | 'abuse_risk' | 'self_harm_risk' | 'violence_risk';
   shouldAvoid: string[];
   requiresCounterEvidence: boolean;
   confidence: number;
+  isFollowUp?: boolean;
+  topicShift?: boolean;
+  userClaimedNewEvidence?: boolean;
+}
+
+export interface CoachChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  intent?: string;
 }
 
 export interface CoachInsightContext {
   userQuestion: string;
+  recentCoachTurns: CoachChatTurn[];
+  viewerPerspective: {
+    selectedName: string | null;
+    selectedRole: NormalizedSpeaker | 'unknown';
+  };
+  queryFrame: {
+    topic: string;
+    userFraming: 'positive' | 'negative' | 'ambiguous' | 'request_advice' | 'safety';
+    needsProactiveRiskCheck: boolean;
+    reason: string;
+  };
   plan: CoachQueryPlan;
   conversationOverview: {
     totalMessages: number;
@@ -503,6 +533,13 @@ export interface CoachInsightContext {
   relevantMetrics: Record<string, number | string>;
   relevantTrends: Array<Record<string, number | string>>;
   detectedPatterns: RelationshipPattern[];
+  surfacedRisks: Array<{
+    type: string;
+    severity: number;
+    confidence: number;
+    whyItMatters: string;
+    evidence: EvidenceItem[];
+  }>;
   relevantEpisodes: RelationshipEpisode[];
   retrievedMessages: EvidenceItem[];
   counterEvidence: EvidenceItem[];
