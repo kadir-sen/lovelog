@@ -3,7 +3,6 @@
 // - Web (modern tarayıcı): Web Share API
 // - Fallback: window.print() (PC tarayıcı)
 
-import type { GeminiInsight } from '../types';
 import type { RelationshipReport, RelationshipMode } from './relationshipReport';
 
 interface ShareInput {
@@ -11,20 +10,17 @@ interface ShareInput {
   score: number;
   relationMode: RelationshipMode;
   viewerName: string | null | undefined;
-  aiInsight: GeminiInsight | null;
 }
 
 const buildShareText = (input: ShareInput): string => {
-  const { report, score, relationMode, aiInsight } = input;
+  const { report, score, relationMode } = input;
   const isFriend = relationMode === 'friend';
   const lines = [
     isFriend ? `🌟 LoveLog Vibe Raporu` : `💞 LoveLog İlişki Raporu`,
     ``,
     `${isFriend ? 'Vibe skoru' : 'Aşk skoru'}: ${Math.round(score)}/100`,
   ];
-  if (aiInsight?.summary) {
-    lines.push('', aiInsight.summary);
-  } else if (report?.narratives?.funFact) {
+  if (report?.narratives?.funFact) {
     lines.push('', report.narratives.funFact);
   }
   lines.push('', '— LoveLog ile analiz edildi.');

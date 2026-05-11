@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -12,8 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AnalysisResult, BehavioralPattern, ConversationProfile, GeminiInsight, RelationshipPattern } from '../types';
-import { generateRelationshipInsights } from '../services/geminiService';
+import { AnalysisResult, BehavioralPattern } from '../types';
 import { buildRelationshipReport, CalendarDayReport, RelationshipMode, RelationshipReport } from '../services/relationshipReport';
 import { shareReport } from '../services/sharing';
 import { LL, Glass, Heart, Sparkle } from './lovelog/tokens';
@@ -201,23 +200,21 @@ const HeroSummary: React.FC<{ report: RelationshipReport; score: number; relatio
   </>
 );
 
-const AiSummary: React.FC<{ report: RelationshipReport; aiInsight: GeminiInsight | null; loading: boolean; mode: InsightMode; setMode: (mode: InsightMode) => void; relationMode: RelationshipMode }> = ({
+const AiSummary: React.FC<{ report: RelationshipReport; mode: InsightMode; setMode: (mode: InsightMode) => void; relationMode: RelationshipMode }> = ({
   report,
-  aiInsight,
-  loading,
   mode,
   setMode,
   relationMode,
 }) => {
   const body = mode === 'love'
-    ? aiInsight?.summary || report.overview.aiSummary
-    : aiInsight?.negativeSummary || `${report.timeline.chaoticPeriod?.description || 'Kaos sinyali düşük.'} Bu bölüm eğlenceli bir ritim okumasıdır; kesin hüküm değildir.`;
+    ? report.overview.aiSummary
+    : `${report.timeline.chaoticPeriod?.description || 'Kaos sinyali düşük.'} Bu bölüm eğlenceli bir ritim okumasıdır; kesin hüküm değildir.`;
   return (
     <Glass strong style={{ padding: 18, borderRadius: 22, marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 10, color: LL.gold, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase' }}>
-            Yapay Zeka Özeti
+            Sohbet Özeti
           </div>
           <div style={{ fontSize: 11, color: LL.fgDim, marginTop: 2 }}>Sohbet ritminin kısa yorumu.</div>
         </div>
@@ -230,7 +227,7 @@ const AiSummary: React.FC<{ report: RelationshipReport; aiInsight: GeminiInsight
         )}
       </div>
       <div className="ll-serif" style={{ fontSize: 16, fontStyle: 'italic', lineHeight: 1.55 }}>
-        {loading ? 'Yıldızlar metrikleri yorumluyor…' : body}
+        {body}
       </div>
     </Glass>
   );
@@ -396,140 +393,6 @@ const PatternsSection: React.FC<{ patterns: BehavioralPattern[] }> = ({ patterns
     ))}
   </div>
 );
-
-// İlişki Dinamiği — coachProfile'tan beslenen kartlar. Bunlar koç ekranında
-// kullanılan signal/pattern/episode datasının görünür hali.
-const RELATIONSHIP_PATTERN_LABEL: Partial<Record<RelationshipPattern['type'], { tr: string; why: string }>> = {
-  gaslighting_like: { tr: 'Gaslighting-benzeri an\'lar', why: 'Gerçekliğin küçümsenmesi tekrar ediyorsa kendi sezgine güvenmek zorlaşır.' },
-  control_or_surveillance: { tr: 'Kontrol / Kıskançlık', why: 'Konum, kimle konuştuğun, ne giydiğin gibi konularda baskı kişilik hakkı meselesidir.' },
-  love_bombing_like: { tr: 'Telafi-jest döngüsü', why: 'Kırıcı andan sonra yoğun sıcaklık geliyorsa bu lovebombing-benzeri bir telafi olabilir.' },
-  hot_cold_cycle: { tr: 'Sıcak-soğuk döngüsü', why: 'Sıcaklık sonrası ani soğuma bağımlılık hissi yaratabilir.' },
-  slow_fade: { tr: 'Geri çekilme örüntüsü', why: 'Mesaj payı, sıcaklık veya dönüş hızı zayıflıyorsa bu yavaş geri çekilme sinyali olabilir.' },
-  repair_imbalance: { tr: 'Onarım dengesizliği', why: 'Tartışmadan sonra hep aynı kişi adım atıyorsa ilişki yükü tek tarafa biniyor olabilir.' },
-  emotional_labor_imbalance: { tr: 'Duygusal emek dengesizliği', why: 'Açıklama/soru/toparlama tarafını hep biri taşıyorsa sürdürülebilir değil.' },
-  future_faking_like: { tr: 'Future-faking havası', why: 'Plan vaadi var ama iptal de tekrar ediyorsa söz-davranış farkına bakmak gerekir.' },
-  guilt_tripping_like: { tr: 'Suçluluk yükleme', why: 'Sürekli "senin yüzünden" tonu sınırları yumuşatmak için kullanılabilir.' },
-  jealousy_spiral: { tr: 'Kıskançlık spirali', why: 'Tekrar eden sahiplenici tepkiler güven yerine baskı yaratır.' },
-  attack_apology_cycle: { tr: 'Saldırı-özür döngüsü', why: 'Sert söz sonrası hızlı özür örüntü olarak yerleşirse davranış değişmez.' },
-  reciprocity_drop: { tr: 'Karşılıklılık düşüşü', why: 'Bir taraf bariz daha az yatırım yapıyorsa bunu okumak gerek.' },
-  plan_cancel_pattern: { tr: 'Plan-iptal örüntüsü', why: 'Tekrarlayan "yarın yaparız" sözleri zaman içinde güveni eritir.' },
-};
-
-const RelMetricGauge: React.FC<{ label: string; value: number; hint?: string }> = ({ label, value, hint }) => {
-  const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
-  const tone = severityTone(value);
-  return (
-    <Glass style={{ padding: 12, borderRadius: 16, minWidth: 0 }}>
-      <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
-        <div className="ll-serif" style={{ fontSize: 22, fontStyle: 'italic', color: tone }}>%{pct}</div>
-      </div>
-      <div style={{ height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginTop: 8 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: tone }} />
-      </div>
-      {hint && <div style={{ fontSize: 10, color: LL.fgMuted, lineHeight: 1.4, marginTop: 8 }}>{hint}</div>}
-    </Glass>
-  );
-};
-
-const RelationshipPatternCard: React.FC<{ pattern: RelationshipPattern }> = ({ pattern }) => {
-  const meta = RELATIONSHIP_PATTERN_LABEL[pattern.type] || { tr: pattern.type, why: '' };
-  const score = (pattern.severity + pattern.confidence) / 2;
-  const tone = severityTone(score);
-  const pct = Math.max(8, Math.round(pattern.severity * 100));
-  return (
-    <Glass style={{ padding: 14, borderRadius: 18 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <div className="ll-serif" style={{ fontSize: 17, fontStyle: 'italic', lineHeight: 1.2 }}>{meta.tr}</div>
-        <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
-          güven %{Math.round(pattern.confidence * 100)}
-        </div>
-      </div>
-      <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginTop: 10 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: tone }} />
-      </div>
-      <div style={{ fontSize: 12, color: LL.fgMuted, lineHeight: 1.45, marginTop: 10 }}>{pattern.summary}</div>
-      {meta.why && (
-        <div style={{ fontSize: 11, color: LL.fgDim, lineHeight: 1.4, marginTop: 6, fontStyle: 'italic' }}>
-          Neden önemli: {meta.why}
-        </div>
-      )}
-      {pattern.evidence.length > 0 && (
-        <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
-          {pattern.evidence.slice(0, 2).map((ev, idx) => (
-            <div key={`${ev.messageId}-${idx}`} style={{ padding: '8px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.045)' }}>
-              <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                {ev.timestamp.slice(0, 10)} · {ev.speaker}
-              </div>
-              <div style={{ fontSize: 12, color: LL.fg, marginTop: 3, lineHeight: 1.4 }}>"{ev.quoteMasked}"</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Glass>
-  );
-};
-
-const phaseTone = (label: string): string => {
-  if (label.startsWith('gerilim')) return LL.red;
-  if (label.startsWith('geri çekilme')) return LL.gold;
-  if (label.startsWith('yakınlık')) return LL.mint;
-  return LL.lavender;
-};
-
-const PhasesStrip: React.FC<{ phases: ConversationProfile['relationshipPhases'] }> = ({ phases }) => {
-  if (!phases.length) return null;
-  return (
-    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-      {phases.map(phase => {
-        const tone = phaseTone(phase.label);
-        return (
-          <Glass key={phase.period} style={{ padding: 10, borderRadius: 14, minWidth: 140, flex: '0 0 auto' }}>
-            <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 700, letterSpacing: 0.6 }}>{phase.period}</div>
-            <div className="ll-serif" style={{ fontSize: 14, fontStyle: 'italic', color: tone, marginTop: 4 }}>{phase.label}</div>
-            <div style={{ fontSize: 10, color: LL.fgMuted, lineHeight: 1.35, marginTop: 6 }}>
-              {phase.dominantSignals.join(' · ')}
-            </div>
-          </Glass>
-        );
-      })}
-    </div>
-  );
-};
-
-const RelationshipDynamicsSection: React.FC<{ profile: ConversationProfile }> = ({ profile }) => {
-  const m = profile.globalMetrics;
-  const significant = profile.topPatterns.filter(p => (p.severity + p.confidence) >= 0.6).slice(0, 6);
-  return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-        <RelMetricGauge label="Kontrol / Kıskançlık" value={m.controlJealousyRisk} hint="Yüksekse kişisel sınır ihlali sinyali var demektir." />
-        <RelMetricGauge label="Ghosting / Geri çekilme" value={m.ghostingRisk} hint="Mesaj payı + sıcaklık + dönüş gecikmesi düşüşü." />
-        <RelMetricGauge label="Tek taraflılık" value={m.oneSidednessScore} hint="Kim ne kadar yatırım yapıyor; %0 dengeli, %100 tek taraflı." />
-        <RelMetricGauge label="Çatışma yoğunluğu" value={m.conflictIntensity} hint="Suçlama / sert dil / küçümseme sıklığı." />
-        <RelMetricGauge label="Onarım dengesi" value={1 - m.repairBalance} hint="Yüksekse hep aynı kişi özür / telafi atıyor." />
-        <RelMetricGauge label="Sıcak-soğuk skoru" value={m.hotColdScore} hint="Sıcaklık sonrası ani soğuma örüntüsü." />
-      </div>
-
-      {significant.length > 0 && (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {significant.map((p, idx) => (
-            <RelationshipPatternCard key={`${p.type}-${idx}`} pattern={p} />
-          ))}
-        </div>
-      )}
-
-      {profile.relationshipPhases.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, color: LL.fgDim, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
-            İlişki dönemleri
-          </div>
-          <PhasesStrip phases={profile.relationshipPhases} />
-        </div>
-      )}
-    </div>
-  );
-};
 
 const Timeline: React.FC<{ report: RelationshipReport }> = ({ report }) => {
   const items = [
@@ -835,8 +698,6 @@ const DayModal: React.FC<{ day: CalendarDayReport | null; report: RelationshipRe
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, onOpenFal, relationMode = 'lover', viewerName }) => {
-  const [aiInsight, setAiInsight] = useState<GeminiInsight | null>(null);
-  const [loadingAi, setLoadingAi] = useState(false);
   const [mode, setMode] = useState<InsightMode>('love');
   const [selectedDay, setSelectedDay] = useState<CalendarDayReport | null>(null);
 
@@ -846,32 +707,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
     [analysis, relationMode]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchInsights = async () => {
-      setLoadingAi(true);
-      try {
-        const result = await generateRelationshipInsights(analysis, relationMode);
-        if (!cancelled) setAiInsight(result);
-      } finally {
-        if (!cancelled) setLoadingAi(false);
-      }
-    };
-    fetchInsights();
-    return () => {
-      cancelled = true;
-    };
-  }, [analysis, relationMode]);
-
   const handlePrint = () => {
-    void shareReport({ report, score, relationMode, viewerName, aiInsight });
+    void shareReport({ report, score, relationMode, viewerName });
   };
 
   return (
     <Screen withTabBar starDensity={70} maxWidth={1120}>
       <div className="ll-dashboard-print" style={{ padding: '20px 20px 24px' }}>
         <HeroSummary report={report} score={score} relationMode={relationMode} onPrint={handlePrint} reset={reset} onBack={onBack} />
-        <AiSummary report={report} aiInsight={aiInsight} loading={loadingAi} mode={mode} setMode={setMode} relationMode={relationMode} />
+        <AiSummary report={report} mode={mode} setMode={setMode} relationMode={relationMode} />
 
         <SectionTitle eyebrow="Profil" title={relationMode === 'friend' ? 'Destekçi · Eğlenceli · Planlayıcı' : 'Duygusal · Meraklı · İlgili'} />
         <ProfileCards report={report} />
@@ -911,7 +755,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
         <Glass style={{ padding: 16, borderRadius: 22 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <Sparkle size={18} color={LL.gold} />
-            <div style={{ fontSize: 13, color: LL.fgMuted, lineHeight: 1.55 }}>{aiInsight?.funFact || report.narratives.funFact}</div>
+            <div style={{ fontSize: 13, color: LL.fgMuted, lineHeight: 1.55 }}>{report.narratives.funFact}</div>
           </div>
         </Glass>
 
@@ -922,13 +766,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
           <>
             <SectionTitle eyebrow="Davranış" title="Tespit Edilen Desenler" />
             <PatternsSection patterns={analysis.patterns} />
-          </>
-        )}
-
-        {analysis.coachProfile && (
-          <>
-            <SectionTitle eyebrow="Dinamik" title="İlişki Dinamiği" />
-            <RelationshipDynamicsSection profile={analysis.coachProfile} />
           </>
         )}
 
@@ -973,22 +810,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
 
         <SectionTitle eyebrow="Yorumlar" title={relationMode === 'friend' ? 'Arkadaşlık Dili' : 'Sevgi Dili'} />
         <Glass style={{ padding: 16, borderRadius: 22, fontSize: 13, color: LL.fgMuted, lineHeight: 1.6 }}>
-          {aiInsight?.loveLanguageAnalysis || report.narratives.loveLanguage}
+          {report.narratives.loveLanguage}
         </Glass>
 
         <SectionTitle title="İletişim Dengesi" />
         <Glass style={{ padding: 16, borderRadius: 22, fontSize: 13, color: LL.fgMuted, lineHeight: 1.6 }}>
-          {aiInsight?.communicationBalance || report.narratives.communicationBalance}
+          {report.narratives.communicationBalance}
         </Glass>
 
         <SectionTitle title="Cevap Ritmi" />
         <Glass style={{ padding: 16, borderRadius: 22, fontSize: 13, color: LL.fgMuted, lineHeight: 1.6 }}>
-          {aiInsight?.responseRhythm || report.narratives.responseRhythm}
+          {report.narratives.responseRhythm}
         </Glass>
 
         <SectionTitle title="Kanıtlı Eğlence" />
         <Glass style={{ padding: 16, borderRadius: 22, fontSize: 13, color: LL.fgMuted, lineHeight: 1.6 }}>
-          {aiInsight?.evidenceBasedFun || report.narratives.evidenceBasedFun}
+          {report.narratives.evidenceBasedFun}
         </Glass>
 
         <Glass
@@ -1012,7 +849,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
         </Glass>
 
         <Glass style={{ padding: 14, borderRadius: 18, marginTop: 14, fontSize: 11.5, color: LL.fgMuted, lineHeight: 1.55 }}>
-          {aiInsight?.carefulAdvice || report.narratives.shortNote}
+          {report.narratives.shortNote}
         </Glass>
 
         {/* Mağaza zorunluluğu (Play 2024+ ve App Store privacy): görünür, ayrı bir veri silme yolu. */}

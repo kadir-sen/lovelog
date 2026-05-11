@@ -9,7 +9,6 @@ interface HomeScreenProps {
   onUpload: () => void;
   onOpenAnalysis: () => void;
   onOpenFal: () => void;
-  onOpenCoach: () => void;
   relationMode?: RelationMode;
 }
 
@@ -37,7 +36,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onUpload,
   onOpenAnalysis,
   onOpenFal,
-  onOpenCoach,
   relationMode = 'lover',
 }) => {
   const p1 = analysis?.participants[0];
@@ -256,7 +254,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         >
           Bugün senin için
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+        <div style={{ marginBottom: 18 }}>
           <Glass hover onClick={onOpenFal} style={{ padding: 16, position: 'relative', overflow: 'hidden', minHeight: 110 }}>
             <div style={{ position: 'absolute', bottom: -10, right: -10, fontSize: 60, opacity: 0.25 }}>☾</div>
             <div
@@ -265,27 +263,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               Yeni
             </div>
             <div className="ll-serif" style={{ fontSize: 18, fontStyle: 'italic', marginTop: 6, lineHeight: 1.1 }}>
-              {relationMode === 'friend' ? 'Arkadaşlık' : 'Bugünün'}
-              <br />
-              Falı
+              {relationMode === 'friend' ? 'Arkadaşlık' : 'Bugünün'} Falı
             </div>
             <div style={{ fontSize: 11, color: LL.fgMuted, marginTop: 8 }}>
               {relationMode === 'friend' ? 'vibe açılımı' : '3 kart çek'}
             </div>
-          </Glass>
-          <Glass hover onClick={onOpenCoach} style={{ padding: 16, position: 'relative', overflow: 'hidden', minHeight: 110 }}>
-            <div style={{ position: 'absolute', bottom: -10, right: -10, fontSize: 60, opacity: 0.25 }}>♡</div>
-            <div
-              style={{ fontSize: 11, color: LL.hotPink, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}
-            >
-              Sohbet
-            </div>
-            <div className="ll-serif" style={{ fontSize: 18, fontStyle: 'italic', marginTop: 6, lineHeight: 1.1 }}>
-              {relationMode === 'friend' ? 'Kanka' : 'İlişki'}
-              <br />
-              Koçu
-            </div>
-            <div style={{ fontSize: 11, color: LL.fgMuted, marginTop: 8 }}>Soru sor</div>
           </Glass>
         </div>
 
