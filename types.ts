@@ -205,14 +205,18 @@ export interface BehavioralPattern {
   label: string;
   description: string;
   severity: number;
+  confidence: number;
   occurrenceCount: number;
   perpetrator?: string;
   victim?: string;
   dateRange: { start: string; end: string };
   evidence: PatternEvidence[];
+  counterEvidence: PatternEvidence[];
 }
 
-export interface LlmCompactSummary {
+// Algoritmik özet bağlamı — Gemini'nin yerine yerel template engine kullanır.
+// Bu yapı, summaryEngine.ts tarafından üretilen başlıklı paragrafları taşır.
+export interface AlgorithmicSummary {
   privacyNote: string;
   aliases: Record<string, string>;
   totalMessages: number;
@@ -233,10 +237,6 @@ export interface LlmCompactSummary {
   periodHighlights: PeriodSummary[];
   milestones: RelationshipMilestone[];
   evidence: EvidenceSnippet[];
-  payloadStats: {
-    approximateChars: number;
-    sourcePolicy: string;
-  };
 }
 
 export interface AnalysisResult {
@@ -245,19 +245,73 @@ export interface AnalysisResult {
   dateRange: { start: Date; end: Date };
   flow: FlowStats;
   hourlyActivity: HourlyActivity[];
-  dailyStats: DailyStats[]; 
-  emojiAnalysis: EmojiUsage[]; 
+  dailyStats: DailyStats[];
+  emojiAnalysis: EmojiUsage[];
   loveWordStats: LoveWordStat[]; // Added
   responseTimeBuckets: ResponseTimeBucket[]; // Added
-  rawMessages: Message[]; 
+  rawMessages: Message[];
   normalizedMessages: NormalizedMessage[];
   segments: ChatSegment[];
   periodSummaries: PeriodSummary[];
   nlpSignals: NlpSignals;
   milestones: RelationshipMilestone[];
   patterns: BehavioralPattern[];
-  llmSummary: LlmCompactSummary;
+  algorithmicSummary: AlgorithmicSummary;
   sampleConversation: string;
+  // services/nlp katmanından gelen opsiyonel ek alanlar. Dashboard bu fazda
+  // bu alanları okumak zorunda değil; ileride yeni kart/insight için kullanılacak.
+  messageInsights?: MessageInsight[];
+  episodes?: RelationshipEpisode[];
+  relationshipPatterns?: RelationshipPattern[];
+  styleProfile?: ConversationStyleProfile;
+}
+
+// --- ConversationStyleProfile (services/nlp/styleProfile.ts ile aynı şekil) ---
+export interface AuthorStyleProfile {
+  avgMessageLength: number;
+  shortReplyRate: number;
+  topEmojis: string[];
+  topLaughPatterns: string[];
+  warmTermUsage: string[];
+  punctuationStyle: {
+    dotEndingRate: number;
+    ellipsisRate: number;
+    questionRate: number;
+    exclamationRate: number;
+  };
+  baselineTone: {
+    playfulRate: number;
+    affectionateRate: number;
+    conflictRate: number;
+    sarcasmCandidateRate: number;
+  };
+}
+
+export interface ConversationStyleProfile {
+  authors: {
+    A: AuthorStyleProfile;
+    B: AuthorStyleProfile;
+  };
+  relationshipDialect: {
+    warmTerms: string[];
+    playfulInsults: string[];
+    sarcasmCuePatterns: string[];
+    coldAckPatterns: string[];
+    careCheckinPatterns: string[];
+    controlPressurePatterns: string[];
+    laughPatterns: string[];
+    emojiSemantics: Record<string, string[]>;
+    insideJokeCandidates: string[];
+    // PR-9 couple-dialect zenginleştirmesi — hepsi opsiyonel, geriye-uyumlu.
+    emojiPairFrequency?: Array<{ pair: string; count: number }>;
+    ritualTimeDistribution?: Record<string, { night: number; morning: number; day: number; total: number }>;
+    customAffectionEmojis?: string[];
+    intensifierDragSamples?: Array<{ base: string; count: number }>;
+    authorAffectionLeaning?: {
+      A: { dominantEmoji?: string; warmTermTop?: string };
+      B: { dominantEmoji?: string; warmTermTop?: string };
+    };
+  };
 }
 
 export type NormalizedSpeaker = 'user' | 'partner' | 'other';
@@ -431,4 +485,3 @@ export interface RelationshipPattern {
   counterEvidence: EvidenceItem[];
   metrics: Record<string, number | string>;
 }
-

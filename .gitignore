@@ -1,3 +1,22 @@
+# Annotation pipeline — raw user data and intermediate artifacts must NEVER be committed
+messages/raw/
+messages/masked/
+messages/windows/
+messages/labels/
+messages/reports/
+tools/annotation/data/raw/
+tools/annotation/data/masked/
+tools/annotation/data/windows/
+tools/annotation/data/labels/
+tools/annotation/data/reports/
+
+# Extra build artifacts / coverage
+build/
+coverage/
+
+# All env files (defense-in-depth: .env is already listed below)
+.env.*
+
 # Logs
 logs
 *.log
@@ -24,6 +43,18 @@ dist-ssr
 # Let's Encrypt / certbot data
 certbot/conf/
 certbot/www/
+
+# Pulled production SQLite snapshots (raw user data — never commit)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+tools/db-pull/
+
+# Local dev/agent config + content artifacts (not part of product)
+.claude/
+marketing/
+tools/annotation/node_modules/
+tools/marketing-screenshots/
 
 # Editor directories and files
 .vscode/*

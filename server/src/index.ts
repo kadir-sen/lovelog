@@ -2,7 +2,14 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { deviceIdHook, getDeviceId } from './middleware/deviceId.js';
-import { registerLlmRoutes } from './routes/llm.js';
+import { registerChatsRoutes } from './routes/chats.js';
+import {
+  registerInvitesRoutes,
+  registerInviteViewRoute,
+} from './routes/invites.js';
+import { registerQuizRoutes } from './routes/quiz.js';
+import { registerEventsRoutes } from './routes/events.js';
+import { deleteAllForDevice } from './lib/storage.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -16,7 +23,8 @@ const app = Fastify({
     level: process.env.LOG_LEVEL ?? 'info',
     redact: ['req.headers["x-device-id"]', 'req.headers.authorization'],
   },
-  bodyLimit: 256 * 1024,
+  // 6MB: chats endpoint'inde 5MB raw .txt'yi JSON body içinde kabul etmek için.
+  bodyLimit: 6 * 1024 * 1024,
 });
 
 await app.register(cors, {
@@ -40,22 +48,30 @@ await app.register(rateLimit, {
 
 app.get('/health', async () => ({ ok: true }));
 
+// Device-id protected scope: chats + invite owner ops.
 await app.register(async (api) => {
   api.addHook('preHandler', deviceIdHook);
-  await registerLlmRoutes(api);
+  await registerChatsRoutes(api);
+  await registerInvitesRoutes(api);
 
   // Mağaza zorunlu hesap silme: cihaz ID'sine bağlı tüm sunucu durumunu temizler.
-  // Şu an in-memory rate-limit dışında server-side state tutmuyoruz; @fastify/rate-limit
-  // dahili counter'ı bir TTL sonrası kendi kendine düşer, gerçek bir DB ekleyince burası
-  // gerçek silme yapacak. Yine de mağaza/privacy review için 200 dönmemiz şart.
+  // chats + invites + events tek seferde nuke (quiz email-bazlı PII, ayrı flow).
   api.delete('/device/:id', async (req, reply) => {
     const headerId = (req as any).deviceId as string;
     const paramId = (req.params as any)?.id as string | undefined;
     if (!paramId || paramId !== headerId) {
       return reply.code(403).send({ error: 'device_id_mismatch' });
     }
-    return reply.send({ ok: true, deletedAt: new Date().toISOString() });
+    const deleted = deleteAllForDevice(headerId);
+    return reply.send({ ok: true, deletedChats: deleted, deletedAt: new Date().toISOString() });
   });
+}, { prefix: '/api' });
+
+// Public routes (no device-id required): invite view + quiz + events sink.
+await app.register(async (api) => {
+  await registerInviteViewRoute(api);
+  await registerQuizRoutes(api);
+  await registerEventsRoutes(api);
 }, { prefix: '/api' });
 
 try {

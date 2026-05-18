@@ -14,17 +14,32 @@ import {
 } from 'recharts';
 import { AnalysisResult, BehavioralPattern } from '../types';
 import { buildRelationshipReport, CalendarDayReport, RelationshipMode, RelationshipReport } from '../services/relationshipReport';
+import { buildAlgorithmicReport, InsightMode as SummaryInsightMode } from '../services/summaryEngine';
 import { shareReport } from '../services/sharing';
 import { LL, Glass, Heart, Sparkle } from './lovelog/tokens';
 import { Screen } from './lovelog/Screen';
+import { ShareButton } from './ShareButton';
+import { InvitePartnerModal } from './InvitePartnerModal';
 
 interface DashboardProps {
   analysis: AnalysisResult;
   reset: () => void;
   onBack: () => void;
   onOpenFal: () => void;
+  onOpenWrapped?: () => void;
   relationMode?: RelationshipMode;
   viewerName?: string | null;
+  /**
+   * Demo mode flag. When true, the dashboard is rendering pre-baked sample
+   * data ("Ali & Burcu"). DemoBadge renders above; future iterations can
+   * disable destructive actions (delete, partner-invite generation) here.
+   */
+  isDemo?: boolean;
+  /**
+   * Read-only mode for shared dashboards (partner invite view, Phase 3).
+   * Hides reset / upload / share-as-owner CTAs. Currently scaffolded only.
+   */
+  readonly?: boolean;
 }
 
 type InsightMode = 'love' | 'chaos';
@@ -136,13 +151,26 @@ const ModeToggle: React.FC<{ mode: InsightMode; setMode: (mode: InsightMode) => 
   </Glass>
 );
 
-const HeroSummary: React.FC<{ report: RelationshipReport; score: number; relationMode: RelationshipMode; onPrint: () => void; reset: () => void; onBack: () => void }> = ({
+const HeroSummary: React.FC<{
+  report: RelationshipReport;
+  score: number;
+  relationMode: RelationshipMode;
+  onPrint: () => void;
+  reset: () => void;
+  onBack: () => void;
+  onInvitePartner?: () => void;
+  onOpenWrapped?: () => void;
+  showOwnerActions?: boolean;
+}> = ({
   report,
   score,
   relationMode,
   onPrint,
   reset,
   onBack,
+  onInvitePartner,
+  onOpenWrapped,
+  showOwnerActions = true,
 }) => (
   <>
     <div className="ll-no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -192,23 +220,59 @@ const HeroSummary: React.FC<{ report: RelationshipReport; score: number; relatio
         <MiniMetric label="Aktif gün" value={fmt(report.overview.activeDays)} tone={LL.mint} />
         <MiniMetric label="Günlük ort." value={fmt(report.overview.averageMessagesPerDay)} tone={LL.gold} />
       </div>
-      <div className="ll-no-print" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+      <div className="ll-no-print" style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
         <button className="ll-action" onClick={onPrint}>Raporu indir</button>
-        <button className="ll-action ll-action-ghost" onClick={reset}>Yenisini yükle</button>
+        {showOwnerActions && (
+          <button className="ll-action ll-action-ghost" onClick={reset}>Yenisini yükle</button>
+        )}
+        <ShareButton
+          variant="score"
+          surface="dashboard_hero"
+          pillar={1}
+          data={{
+            names: [report.couple.personAName, report.couple.personBName],
+            anonymize: true,
+            dateLabel: formatRange(report.overview.dateRange.start, report.overview.dateRange.end),
+            payload: {
+              score,
+              totalMessages: report.overview.totalMessages,
+              modeLabel: relationMode === 'friend' ? 'bestie skoru' : 'aşk skoru',
+            },
+          }}
+        />
+        {showOwnerActions && onInvitePartner && (
+          <button
+            className="ll-action ll-action-ghost"
+            onClick={onInvitePartner}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            👥 Partner davet
+          </button>
+        )}
+        {onOpenWrapped && (
+          <button
+            className="ll-action ll-action-ghost"
+            onClick={onOpenWrapped}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            🎁 Wrapped
+          </button>
+        )}
       </div>
     </Glass>
   </>
 );
 
-const AiSummary: React.FC<{ report: RelationshipReport; mode: InsightMode; setMode: (mode: InsightMode) => void; relationMode: RelationshipMode }> = ({
-  report,
-  mode,
-  setMode,
-  relationMode,
-}) => {
-  const body = mode === 'love'
-    ? report.overview.aiSummary
-    : `${report.timeline.chaoticPeriod?.description || 'Kaos sinyali düşük.'} Bu bölüm eğlenceli bir ritim okumasıdır; kesin hüküm değildir.`;
+const AiSummary: React.FC<{
+  analysis: AnalysisResult;
+  mode: InsightMode;
+  setMode: (mode: InsightMode) => void;
+  relationMode: RelationshipMode;
+}> = ({ analysis, mode, setMode, relationMode }) => {
+  const summary = useMemo(
+    () => buildAlgorithmicReport(analysis, relationMode, mode as SummaryInsightMode),
+    [analysis, relationMode, mode]
+  );
   return (
     <Glass strong style={{ padding: 18, borderRadius: 22, marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -216,7 +280,7 @@ const AiSummary: React.FC<{ report: RelationshipReport; mode: InsightMode; setMo
           <div style={{ fontSize: 10, color: LL.gold, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase' }}>
             Sohbet Özeti
           </div>
-          <div style={{ fontSize: 11, color: LL.fgDim, marginTop: 2 }}>Sohbet ritminin kısa yorumu.</div>
+          <div style={{ fontSize: 11, color: LL.fgDim, marginTop: 2 }}>Sohbet ritminin yerel, algoritmik yorumu.</div>
         </div>
         {relationMode === 'friend' ? (
           <Glass style={{ padding: '8px 12px', borderRadius: 999, fontSize: 11, color: LL.gold, fontWeight: 800 }}>
@@ -227,7 +291,17 @@ const AiSummary: React.FC<{ report: RelationshipReport; mode: InsightMode; setMo
         )}
       </div>
       <div className="ll-serif" style={{ fontSize: 16, fontStyle: 'italic', lineHeight: 1.55 }}>
-        {body}
+        {summary.intro}
+      </div>
+      <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+        {summary.sections.map(section => (
+          <div key={section.heading} style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid ' + LL.glassBorder }}>
+            <div style={{ fontSize: 10, color: LL.gold, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+              {section.heading}
+            </div>
+            <div style={{ fontSize: 13, color: LL.fg, lineHeight: 1.5, marginTop: 4 }}>{section.body}</div>
+          </div>
+        ))}
       </div>
     </Glass>
   );
@@ -369,6 +443,9 @@ const PatternCard: React.FC<{ pattern: BehavioralPattern }> = ({ pattern }) => {
       <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', marginTop: 10 }}>
         <div style={{ width: `${pct}%`, height: '100%', background: tone }} />
       </div>
+      <div style={{ fontSize: 10, color: LL.fgDim, marginTop: 6 }}>
+        Güven: %{Math.round(pattern.confidence * 100)} · Bu kart tekrar eden ve kanıtlı örüntülerle sınırlıdır.
+      </div>
       <div style={{ fontSize: 12, color: LL.fgMuted, lineHeight: 1.45, marginTop: 10 }}>{pattern.description}</div>
       {pattern.evidence.length > 0 && (
         <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
@@ -380,6 +457,14 @@ const PatternCard: React.FC<{ pattern: BehavioralPattern }> = ({ pattern }) => {
               <div style={{ fontSize: 12, color: LL.fg, marginTop: 3, lineHeight: 1.4 }}>{ev.text}</div>
             </div>
           ))}
+        </div>
+      )}
+      {pattern.counterEvidence.length > 0 && (
+        <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 12, background: `${LL.mint}14`, border: `1px solid ${LL.mint}30` }}>
+          <div style={{ fontSize: 10, color: LL.mint, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase' }}>Dengeleyici sinyal</div>
+          <div style={{ fontSize: 11.5, color: LL.fgMuted, lineHeight: 1.4, marginTop: 3 }}>
+            {pattern.counterEvidence[0].text}
+          </div>
         </div>
       )}
     </Glass>
@@ -404,7 +489,7 @@ const Timeline: React.FC<{ report: RelationshipReport }> = ({ report }) => {
   return (
     <Glass style={{ padding: 16, borderRadius: 22 }}>
       {items.length ? items.map(item => (
-        <div key={item!.title} style={{ display: 'grid', gridTemplateColumns: '40px 1fr', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div key={item!.title} style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', alignItems: 'center' }}>
           <div style={{ width: 36, height: 36, borderRadius: 14, background: `${LL.hotPink}22`, display: 'grid', placeItems: 'center', color: LL.gold }}>{item!.icon}</div>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -413,6 +498,22 @@ const Timeline: React.FC<{ report: RelationshipReport }> = ({ report }) => {
             </div>
             <div style={{ fontSize: 11.5, color: LL.fgMuted, lineHeight: 1.45, marginTop: 3 }}>{item!.description}</div>
           </div>
+          <ShareButton
+            compact
+            variant="insight"
+            surface="dashboard_timeline"
+            pillar={2}
+            data={{
+              names: [report.couple.personAName, report.couple.personBName],
+              anonymize: true,
+              dateLabel: formatDate(item!.date),
+              payload: {
+                eyebrow: 'Zaman çizelgesi',
+                headline: item!.title,
+                detail: item!.description,
+              },
+            }}
+          />
         </div>
       )) : <EmptyState text="Timeline için yeterli veri bulunamadı." />}
     </Glass>
@@ -590,13 +691,35 @@ const EmojiWorld: React.FC<{ report: RelationshipReport }> = ({ report }) => (
   <EmojiWorldInner report={report} />
 );
 
+const emojiSemanticLabel = (semantic: string): string => ({
+  affection: 'sevgi',
+  humor: 'mizah',
+  celebration: 'kutlama',
+  mixed: 'karışık bağlam',
+  other: 'özel kullanım',
+}[semantic] || 'özel kullanım');
+
 const EmojiWorldInner: React.FC<{ report: RelationshipReport }> = ({ report }) => {
   const [selectedEmoji, setSelectedEmoji] = useState(report.emoji.topOverall[0]?.emoji ?? '');
   const selected = report.emoji.topOverall.find(item => item.emoji === selectedEmoji) ?? report.emoji.topOverall[0];
   const topDays = selected?.timeline.slice().sort((a, b) => b.count - a.count).slice(0, 6) ?? [];
+  const topPair = report.emoji.topPairs[0];
 
   return (
     <Glass style={{ padding: 16, borderRadius: 22 }}>
+      {topPair && (
+        <div style={{ marginBottom: 14, padding: 12, borderRadius: 18, background: `${LL.hotPink}14`, border: `1px solid ${LL.hotPink}26` }}>
+          <div style={{ fontSize: 10, color: LL.gold, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+            Emoji çiftleri
+          </div>
+          <div className="ll-serif" style={{ fontSize: 26, marginTop: 3 }}>
+            {topPair.pair} · {fmt(topPair.count)}
+          </div>
+          <div style={{ fontSize: 11.5, color: LL.fgMuted, lineHeight: 1.45, marginTop: 4 }}>
+            En sık görülen çift {emojiSemanticLabel(topPair.semantic)} bağlamında öne çıkıyor. {report.couple.personAName}: {topPair.byPerson[report.couple.personAName] || 0}, {report.couple.personBName}: {topPair.byPerson[report.couple.personBName] || 0}.
+          </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
         {report.emoji.topOverall.length ? report.emoji.topOverall.slice(0, 8).map(item => {
           const on = selected?.emoji === item.emoji;
@@ -663,6 +786,15 @@ const EmojiWorldInner: React.FC<{ report: RelationshipReport }> = ({ report }) =
         <MiniMetric label="Sevgi emojileri" value={fmt(report.emoji.loveEmojiCount)} tone={LL.blush} />
         <MiniMetric label="Gülme emojileri" value={fmt(report.emoji.laughEmojiCount)} tone={LL.gold} />
       </div>
+      {report.emoji.topPairs.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+          {report.emoji.topPairs.slice(1, 7).map(pair => (
+            <span key={pair.pair} style={{ padding: '7px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.07)', fontSize: 12 }}>
+              {pair.pair} {pair.count}
+            </span>
+          ))}
+        </div>
+      )}
     </Glass>
   );
 };
@@ -685,21 +817,62 @@ const DayModal: React.FC<{ day: CalendarDayReport | null; report: RelationshipRe
           <MiniMetric label={report.couple.personAName} value={fmt(day.personA)} tone={LL.lavender} />
           <MiniMetric label={report.couple.personBName} value={fmt(day.personB)} tone={LL.hotPink} />
           <MiniMetric label="Sevgi" value={fmt(day.loveScore)} tone={LL.blush} />
-          <MiniMetric label="Kaos" value={fmt(day.chaosScore)} tone={LL.gold} />
+          <MiniMetric label="Gerilim" value={fmt(day.chaosScore)} tone={LL.gold} />
         </div>
         <div style={{ marginTop: 14, fontSize: 12, color: LL.fgMuted, lineHeight: 1.5 }}>{day.insight}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
+          <MiniMetric label="En canlı saat" value={day.busiestHour !== undefined ? `${String(day.busiestHour).padStart(2, '0')}:00` : 'yok'} tone={LL.lavender} />
+          <MiniMetric label="Sıcak saat" value={day.warmestHour !== undefined ? `${String(day.warmestHour).padStart(2, '0')}:00` : 'yok'} tone={LL.blush} />
+          <MiniMetric label="Daralan ritim" value={fmt(day.shortReplyClusters)} tone={LL.gold} />
+        </div>
+        {day.hourlyFlow.length > 0 && (
+          <div style={{ marginTop: 12, padding: 10, borderRadius: 16, background: 'rgba(255,255,255,0.045)' }}>
+            <div style={{ fontSize: 10, color: LL.gold, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Saatlik akış</div>
+            <div style={{ display: 'flex', alignItems: 'end', gap: 4, height: 58 }}>
+              {day.hourlyFlow.map(hour => {
+                const max = Math.max(...day.hourlyFlow.map(h => h.total), 1);
+                return (
+                  <div key={hour.hour} title={`${hour.hour}:00 · ${hour.total} mesaj`} style={{ flex: 1, display: 'flex', alignItems: 'end', minWidth: 4 }}>
+                    <div style={{ width: '100%', height: `${Math.max(8, (hour.total / max) * 54)}px`, borderRadius: 4, background: hour.warmth >= hour.tension ? LL.blush : LL.gold }} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
           {day.topEmojis.map(item => <span key={item.emoji} style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.08)' }}>{item.emoji} {item.count}</span>)}
+          {day.topEmojiPairs.map(item => <span key={item.pair} style={{ padding: '6px 10px', borderRadius: 999, background: `${LL.hotPink}22` }}>{item.pair} {item.count}</span>)}
           {day.topLoveWords.map(item => <span key={item.word} style={{ padding: '6px 10px', borderRadius: 999, background: `${LL.hotPink}22`, fontSize: 12 }}>{item.word} {item.count}</span>)}
+          {day.rituals.map(item => <span key={item.kind} style={{ padding: '6px 10px', borderRadius: 999, background: `${LL.mint}18`, fontSize: 12 }}>{item.kind.replace(/_/g, ' ')} {item.count}</span>)}
         </div>
+        {day.evidence.length > 0 && (
+          <div style={{ display: 'grid', gap: 7, marginTop: 14 }}>
+            {day.evidence.map(item => (
+              <div key={`${item.messageId}-${item.reason}`} style={{ padding: 10, borderRadius: 14, background: 'rgba(255,255,255,0.055)' }}>
+                <div style={{ fontSize: 10, color: LL.fgDim, fontWeight: 800, textTransform: 'uppercase' }}>{item.speaker} · {item.reason}</div>
+                <div style={{ fontSize: 12, color: LL.fg, lineHeight: 1.4, marginTop: 3 }}>{item.quoteMasked}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {day.counterEvidence.length > 0 && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 14, background: `${LL.mint}12`, border: `1px solid ${LL.mint}25`, fontSize: 11.5, color: LL.fgMuted, lineHeight: 1.45 }}>
+            Dengeleyici sinyal: {day.counterEvidence[0].speaker} · {day.counterEvidence[0].quoteMasked}
+          </div>
+        )}
       </Glass>
     </div>
   );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, onOpenFal, relationMode = 'lover', viewerName }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, onOpenFal, onOpenWrapped, relationMode = 'lover', viewerName, isDemo = false, readonly = false }) => {
   const [mode, setMode] = useState<InsightMode>('love');
   const [selectedDay, setSelectedDay] = useState<CalendarDayReport | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  // Owner-only actions (invite, delete) are hidden in shared/readonly view
+  // and in demo mode (no real chat to share).
+  const showOwnerActions = !readonly && !isDemo;
 
   const report = useMemo(() => buildRelationshipReport(analysis, relationMode), [analysis, relationMode]);
   const score = useMemo(
@@ -714,8 +887,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
   return (
     <Screen withTabBar starDensity={70} maxWidth={1120}>
       <div className="ll-dashboard-print" style={{ padding: '20px 20px 24px' }}>
-        <HeroSummary report={report} score={score} relationMode={relationMode} onPrint={handlePrint} reset={reset} onBack={onBack} />
-        <AiSummary report={report} mode={mode} setMode={setMode} relationMode={relationMode} />
+        <HeroSummary
+          report={report}
+          score={score}
+          relationMode={relationMode}
+          onPrint={handlePrint}
+          reset={reset}
+          onBack={onBack}
+          showOwnerActions={showOwnerActions}
+          onInvitePartner={showOwnerActions ? () => setInviteOpen(true) : undefined}
+          onOpenWrapped={onOpenWrapped}
+        />
+        <AiSummary analysis={analysis} mode={mode} setMode={setMode} relationMode={relationMode} />
 
         <SectionTitle eyebrow="Profil" title={relationMode === 'friend' ? 'Destekçi · Eğlenceli · Planlayıcı' : 'Duygusal · Meraklı · İlgili'} />
         <ProfileCards report={report} />
@@ -762,10 +945,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
         <SectionTitle eyebrow="Zaman" title={relationMode === 'friend' ? 'Arkadaşlık Zaman Çizgisi' : 'İlişki Zaman Çizgisi'} />
         <Timeline report={report} />
 
-        {analysis.patterns.length > 0 && (
+        {report.patterns.length > 0 && (
           <>
-            <SectionTitle eyebrow="Davranış" title="Tespit Edilen Desenler" />
-            <PatternsSection patterns={analysis.patterns} />
+            <SectionTitle eyebrow="Davranış" title="Güçlü Örüntüler" />
+            <PatternsSection patterns={report.patterns} />
           </>
         )}
 
@@ -902,6 +1085,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ analysis, reset, onBack, o
         </div>
       </div>
       <DayModal day={selectedDay} report={report} onClose={() => setSelectedDay(null)} />
+      {showOwnerActions && (
+        <InvitePartnerModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      )}
     </Screen>
   );
 };

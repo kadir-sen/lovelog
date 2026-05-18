@@ -1,6 +1,8 @@
 import {
   AnalysisResult,
+  BehavioralPattern,
   DailyStats,
+  EvidenceItem,
   LoveWordStat,
   NormalizedMessage,
   ParticipantStats,
@@ -75,8 +77,27 @@ export interface CalendarDayReport {
   mediaCount: number;
   emojiCount: number;
   topEmojis: Array<{ emoji: string; count: number }>;
+  topEmojiPairs: Array<{ pair: string; count: number }>;
   topLoveWords: Array<{ word: string; count: number }>;
+  hourlyFlow: Array<{ hour: number; total: number; personA: number; personB: number; warmth: number; tension: number }>;
+  busiestHour?: number;
+  warmestHour?: number;
+  tensestHour?: number;
+  rituals: Array<{ kind: string; count: number }>;
+  evidence: EvidenceItem[];
+  counterEvidence: EvidenceItem[];
+  shortReplyClusters: number;
+  planSignals: number;
+  repairSignals: number;
   insight: string;
+}
+
+export interface EmojiPairReport {
+  pair: string;
+  count: number;
+  byPerson: Record<string, number>;
+  timeline: Array<{ date: string; count: number }>;
+  semantic: 'affection' | 'humor' | 'celebration' | 'mixed' | 'other';
 }
 
 export interface RelationshipReport {
@@ -105,7 +126,6 @@ export interface RelationshipReport {
   privacy: {
     rawChatSentToLLM: false;
     anonymizedPayload: true;
-    llmPayloadKb: number;
     note: string;
   };
   deepAnalysis: {
@@ -154,9 +174,11 @@ export interface RelationshipReport {
       timeline: Array<{ date: string; count: number }>;
     }>;
     byPerson: Record<string, Array<{ emoji: string; count: number }>>;
+    topPairs: EmojiPairReport[];
     loveEmojiCount: number;
     laughEmojiCount: number;
   };
+  patterns: BehavioralPattern[];
   narratives: {
     loveLanguage: string;
     communicationBalance: string;
@@ -169,8 +191,10 @@ export interface RelationshipReport {
 
 const LOVE_EMOJIS = new Set(['❤', '❤️', '♥', '💕', '💖', '💗', '💘', '💞', '💓', '🤍', '😘', '😚', '🥰', '😍']);
 const LAUGH_EMOJIS = new Set(['😂', '🤣', '😅', '😁', '😄', '😆']);
+const CELEBRATION_EMOJIS = new Set(['🥳', '🎉', '✨', '⭐', '🌟']);
 const SESSION_GAP_MINUTES = 120;
 const FLOW_GAP_MINUTES = 30;
+const EMOJI_REGEX = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
 const SUPPORT_KEYWORDS = ['yanındayım', 'dinlerim', 'anlat', 'üzülme', 'merak etme', 'haklısın', 'geçer', 'seni anlıyorum', 'iyi misin', 'yardım', 'destek', 'sarıl', 'gurur', 'başar'];
 const FUN_KEYWORDS = ['kanka', 'kankam', 'bestie', 'dedikodu', 'tea', 'şaka', 'komik', 'güldüm', 'ahah', 'hahaha', 'asdad', 'slay', 'kraliçe', 'susss', 'deli misin'];
 const FRIEND_DRAMA_KEYWORDS = ['drama', 'trip', 'küstüm', 'küs', 'boşver', 'neyse', 'sinir', 'ayıp', 'kırıldım', 'soğuk', 'iptal', 'yazmadın', 'görüldü', 'umursamadın'];
@@ -195,6 +219,33 @@ const safePct = (value: number, total: number): number => total ? Math.round((va
 const countKeywordHits = (content: string, keywords: string[]): number => {
   const lower = content.toLocaleLowerCase('tr-TR');
   return keywords.reduce((total, keyword) => total + (lower.includes(keyword) ? 1 : 0), 0);
+};
+
+const normalizeEmojiForReport = (emoji: string): string => emoji === '❤' ? '❤️' : emoji;
+
+const extractEmojiSequence = (content: string): string[] =>
+  (content.match(EMOJI_REGEX) || []).map(normalizeEmojiForReport);
+
+const extractEmojiPairs = (content: string): string[] => {
+  const emojis = extractEmojiSequence(content);
+  const pairs: string[] = [];
+  for (let i = 1; i < emojis.length; i++) {
+    pairs.push(`${emojis[i - 1]}${emojis[i]}`);
+  }
+  return pairs;
+};
+
+const classifyEmojiPair = (pair: string): EmojiPairReport['semantic'] => {
+  const emojis = extractEmojiSequence(pair);
+  if (!emojis.length) return 'other';
+  const affection = emojis.filter(e => LOVE_EMOJIS.has(e)).length;
+  const humor = emojis.filter(e => LAUGH_EMOJIS.has(e)).length;
+  const celebration = emojis.filter(e => CELEBRATION_EMOJIS.has(e)).length;
+  if (affection === emojis.length) return 'affection';
+  if (humor === emojis.length) return 'humor';
+  if (celebration === emojis.length) return 'celebration';
+  if (affection || humor || celebration) return 'mixed';
+  return 'other';
 };
 
 const friendSignalsForMessage = (msg: NormalizedMessage) => {
@@ -310,21 +361,95 @@ const findLongestSilence = (messages: NormalizedMessage[]) => {
   return result;
 };
 
+const buildEmojiPairReport = (messages: NormalizedMessage[], authors: string[]): EmojiPairReport[] => {
+  const pairs = new Map<string, EmojiPairReport>();
+
+  messages.forEach(msg => {
+    if (msg.isMedia) return;
+    extractEmojiPairs(msg.content).forEach(pair => {
+      if (!pairs.has(pair)) {
+        pairs.set(pair, {
+          pair,
+          count: 0,
+          byPerson: Object.fromEntries(authors.map(author => [author, 0])),
+          timeline: [],
+          semantic: classifyEmojiPair(pair),
+        });
+      }
+      const item = pairs.get(pair)!;
+      item.count++;
+      item.byPerson[msg.author] = (item.byPerson[msg.author] || 0) + 1;
+      const last = item.timeline[item.timeline.length - 1];
+      if (last && last.date === msg.dateKey) {
+        last.count++;
+      } else {
+        item.timeline.push({ date: msg.dateKey, count: 1 });
+      }
+    });
+  });
+
+  return [...pairs.values()]
+    .filter(item => item.count >= 2)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12);
+};
+
+const isWarmReturnEvidence = (pattern: BehavioralPattern): boolean =>
+  pattern.counterEvidence.some(ev => /sıcak|telafi|onarım|dönüş|açıklama|sevgi|plan/i.test(ev.text));
+
+const isReliablePattern = (pattern: BehavioralPattern): boolean => {
+  if (pattern.confidence < 0.68) return false;
+  if (pattern.evidence.length < 2) return false;
+  if (pattern.occurrenceCount < 3 && pattern.id !== 'reciprocity_decline') return false;
+  if (isWarmReturnEvidence(pattern) && pattern.confidence < 0.78) return false;
+  return true;
+};
+
+const buildReportPatterns = (patterns: BehavioralPattern[]): BehavioralPattern[] =>
+  patterns
+    .filter(isReliablePattern)
+    .map(pattern => ({
+      ...pattern,
+      label: pattern.label
+        .replace(/Sessiz tedavi/giu, 'Uzun sessizlik')
+        .replace(/Karşılıklılık çöküşü/giu, 'Karşılıklılık değişimi'),
+      description: pattern.description
+        .replace(/sessiz tedavi/giu, 'uzun sessizlik')
+        .replace(/cevap vermemiş/giu, 'uzun süre yanıt gelmemiş')
+        .replace(/çöküş/giu, 'değişim')
+        .replace(/gaslighting|manipülatif|toxic|toksik/giu, 'gözlenen örüntü'),
+    }))
+    .sort((a, b) => (b.confidence + b.severity) - (a.confidence + a.severity))
+    .slice(0, 5);
+
 const buildCalendar = (analysis: AnalysisResult, personA: string, personB: string, mode: RelationshipMode): CalendarDayReport[] => {
   const byDate = new Map<string, NormalizedMessage[]>();
   analysis.normalizedMessages.forEach(msg => {
     if (!byDate.has(msg.dateKey)) byDate.set(msg.dateKey, []);
     byDate.get(msg.dateKey)!.push(msg);
   });
+  const insightsByDate = new Map<string, NonNullable<AnalysisResult['messageInsights']>>();
+  (analysis.messageInsights || []).forEach(insight => {
+    if (!insightsByDate.has(insight.dateKey)) insightsByDate.set(insight.dateKey, []);
+    insightsByDate.get(insight.dateKey)!.push(insight);
+  });
 
   return analysis.dailyStats.map(day => {
     const messages = byDate.get(day.date) || [];
+    const insights = insightsByDate.get(day.date) || [];
     const emojiCounts = new Map<string, number>();
+    const emojiPairCounts = new Map<string, number>();
     const loveWordCounts = new Map<string, number>();
+    const ritualCounts = new Map<string, number>();
+    const hourly = new Map<number, { hour: number; total: number; personA: number; personB: number; warmth: number; tension: number }>();
     let loveScore = 0;
     let chaosScore = 0;
     let mediaCount = 0;
     let emojiCount = 0;
+    let shortReplyClusters = 0;
+    let currentShortRun = 0;
+    let planSignals = 0;
+    let repairSignals = 0;
 
     messages.forEach(msg => {
       if (mode === 'friend') {
@@ -337,6 +462,14 @@ const buildCalendar = (analysis: AnalysisResult, personA: string, personB: strin
       }
       mediaCount += msg.isMedia ? 1 : 0;
       emojiCount += msg.emojiCount;
+      extractEmojiPairs(msg.content).forEach(pair => emojiPairCounts.set(pair, (emojiPairCounts.get(pair) || 0) + 1));
+      if (msg.isShortReply) {
+        currentShortRun++;
+        if (currentShortRun === 3) shortReplyClusters++;
+      } else {
+        currentShortRun = 0;
+      }
+      planSignals += msg.signals.planning + msg.signals.future;
       analysis.loveWordStats.forEach(word => {
         if (!msg.isMedia && msg.content.toLocaleLowerCase('tr-TR').includes(word.word.toLocaleLowerCase('tr-TR'))) {
           loveWordCounts.set(word.word, (loveWordCounts.get(word.word) || 0) + 1);
@@ -349,9 +482,63 @@ const buildCalendar = (analysis: AnalysisResult, personA: string, personB: strin
       if (count) emojiCounts.set(emoji.char, count);
     });
 
+    insights.forEach(insight => {
+      const hour = new Date(insight.timestamp).getHours();
+      if (!hourly.has(hour)) hourly.set(hour, { hour, total: 0, personA: 0, personB: 0, warmth: 0, tension: 0 });
+      const h = hourly.get(hour)!;
+      h.total++;
+      if (insight.speaker === personA) h.personA++;
+      if (insight.speaker === personB) h.personB++;
+      h.warmth += insight.warmthScore + insight.repairScore;
+      h.tension += insight.conflictScore + insight.controlScore + insight.avoidanceScore * 0.5;
+      if ((insight as any).modifiers?.ritualKind) {
+        const kind = (insight as any).modifiers.ritualKind as string;
+        ritualCounts.set(kind, (ritualCounts.get(kind) || 0) + 1);
+      }
+      if (insight.repairScore > 0.7) repairSignals++;
+    });
+
     const topEmojis = Array.from(emojiCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([emoji, count]) => ({ emoji, count }));
+    const topEmojiPairs = Array.from(emojiPairCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([pair, count]) => ({ pair, count }));
     const topLoveWords = Array.from(loveWordCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([word, count]) => ({ word, count }));
     const leader = (day.breakdown[personA] || 0) >= (day.breakdown[personB] || 0) ? personA : personB;
+    const hourlyFlow = [...hourly.values()].sort((a, b) => a.hour - b.hour);
+    const busiestHour = [...hourlyFlow].sort((a, b) => b.total - a.total)[0]?.hour;
+    const warmestHour = [...hourlyFlow].filter(h => h.warmth > 0).sort((a, b) => b.warmth - a.warmth)[0]?.hour;
+    const tensestHour = [...hourlyFlow].filter(h => h.tension > 0).sort((a, b) => b.tension - a.tension)[0]?.hour;
+    const evidence = insights
+      .filter(ins => ins.warmthScore + ins.repairScore + ins.conflictScore + ins.controlScore > 1)
+      .sort((a, b) =>
+        (b.warmthScore + b.repairScore + b.conflictScore + b.controlScore) -
+        (a.warmthScore + a.repairScore + a.conflictScore + a.controlScore)
+      )
+      .slice(0, 3)
+      .map(ins => ({
+        messageId: ins.messageId,
+        timestamp: ins.timestamp,
+        speaker: ins.speaker,
+        quoteMasked: ins.textMasked,
+        reason: ins.repairScore > 0.7 ? 'onarım sinyali' : ins.warmthScore > ins.conflictScore ? 'sıcaklık sinyali' : 'yoğun konuşma sinyali',
+      }));
+    const counterEvidence = insights
+      .filter(ins => ins.repairScore > 0.7 || (ins.warmthScore > 1 && ins.conflictScore > 0))
+      .slice(0, 2)
+      .map(ins => ({
+        messageId: ins.messageId,
+        timestamp: ins.timestamp,
+        speaker: ins.speaker,
+        quoteMasked: ins.textMasked,
+        reason: 'dengeleyici sinyal',
+      }));
+    const rituals = Array.from(ritualCounts.entries()).sort((a, b) => b[1] - a[1]).map(([kind, count]) => ({ kind, count }));
+
+    const flowHint = busiestHour !== undefined ? ` En canlı saat ${String(busiestHour).padStart(2, '0')}:00 civarı.` : '';
+    const pairHint = topEmojiPairs[0] ? ` Öne çıkan emoji çifti ${topEmojiPairs[0].pair}.` : '';
+    const clusterHint = shortReplyClusters > 0 && repairSignals > 0
+      ? ' Kısa cevap kümeleri var ama sonrasında onarım/sıcak dönüş de görünüyor.'
+      : shortReplyClusters > 0
+        ? ' Kısa cevap kümeleri tek başına kopuş değil; sadece ritim daralması olarak işaretlendi.'
+        : '';
 
     return {
       date: day.date,
@@ -363,10 +550,21 @@ const buildCalendar = (analysis: AnalysisResult, personA: string, personB: strin
       mediaCount,
       emojiCount,
       topEmojis,
+      topEmojiPairs,
       topLoveWords,
+      hourlyFlow,
+      busiestHour,
+      warmestHour,
+      tensestHour,
+      rituals,
+      evidence,
+      counterEvidence,
+      shortReplyClusters,
+      planSignals,
+      repairSignals,
       insight: mode === 'friend'
-        ? `${leader} o gün sohbette biraz daha görünür. Vibe/destek skoru ${Math.round(loveScore)}, drama skoru ${Math.round(chaosScore)}.`
-        : `${leader} o gün sohbet trafiğinde biraz daha görünür. Sevgi skoru ${Math.round(loveScore)}, kaos skoru ${Math.round(chaosScore)}.`,
+        ? `${leader} o gün sohbette biraz daha görünür. Vibe/destek skoru ${Math.round(loveScore)}, drama skoru ${Math.round(chaosScore)}.${flowHint}${pairHint}${clusterHint}`
+        : `${leader} o gün sohbet trafiğinde biraz daha görünür. Sevgi skoru ${Math.round(loveScore)}, gerilim skoru ${Math.round(chaosScore)}.${flowHint}${pairHint}${clusterHint}`,
     };
   });
 };
@@ -443,6 +641,8 @@ export const buildRelationshipReport = (analysis: AnalysisResult, mode: Relation
   const friendTotals = friendTotalsByParticipant(analysis.normalizedMessages, [personA.name, personB.name]);
   const friendA = friendTotals[personA.name];
   const friendB = friendTotals[personB.name];
+  const emojiPairs = buildEmojiPairReport(analysis.normalizedMessages, [personA.name, personB.name]);
+  const reportPatterns = buildReportPatterns(analysis.patterns || []);
 
   const toPersonStats = (person: ParticipantStats, emojiCount: number): PersonReportStats => ({
     name: person.name,
@@ -465,7 +665,7 @@ export const buildRelationshipReport = (analysis: AnalysisResult, mode: Relation
     ? `En canlı saat ${String(topHour.hour).padStart(2, '0')}:00 civarı; bu saatte ${topHour.count.toLocaleString('tr-TR')} mesaj birikmiş.`
     : 'Saat yoğunluğu için yeterli veri bulunamadı.';
 
-  const safeEvidence = analysis.llmSummary.evidence
+  const safeEvidence = analysis.algorithmicSummary.evidence
     .filter(item => item.text.length < 120 && !/telefon|adres|email|link|\[telefon\]|\[email\]|\[link\]/i.test(item.text))
     .slice(0, 2);
 
@@ -513,8 +713,7 @@ export const buildRelationshipReport = (analysis: AnalysisResult, mode: Relation
     privacy: {
       rawChatSentToLLM: false,
       anonymizedPayload: true,
-      llmPayloadKb: Math.max(1, Math.round((analysis.llmSummary.payloadStats.approximateChars / 1024) * 10) / 10),
-      note: 'Bu bölüm sohbet ritmini soru, kısa cevap, plan, pozitif sinyal ve gerilim başlıklarıyla özetler.',
+      note: 'Tüm yorumlar cihazında üretildi; sohbetin hiçbir kısmı üçüncü taraf bir servise gönderilmedi.',
     },
     deepAnalysis: {
       questions: {
@@ -636,9 +835,11 @@ export const buildRelationshipReport = (analysis: AnalysisResult, mode: Relation
         [personA.name]: Object.entries(personA.emojis).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([emoji, count]) => ({ emoji, count })),
         [personB.name]: Object.entries(personB.emojis).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([emoji, count]) => ({ emoji, count })),
       },
+      topPairs: emojiPairs,
       loveEmojiCount: analysis.emojiAnalysis.filter(item => LOVE_EMOJIS.has(item.char)).reduce((sum, item) => sum + item.count, 0),
       laughEmojiCount: analysis.emojiAnalysis.filter(item => LAUGH_EMOJIS.has(item.char)).reduce((sum, item) => sum + item.count, 0),
     },
+    patterns: reportPatterns,
     narratives: {
       loveLanguage: mode === 'friend'
         ? `${personA.name} destek ${Math.round(friendA.support)}, eğlence ${Math.round(friendA.fun)}; ${personB.name} destek ${Math.round(friendB.support)}, eğlence ${Math.round(friendB.fun)} sinyali üretmiş. Arkadaşlık dili burada romantik sevgi yerine destek, iç şaka ve birlikte plan yapma üzerinden okunur.`

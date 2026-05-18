@@ -1,5 +1,6 @@
-// Backend Gemini proxy istemcisi. Anahtar artık client'ta yok; tüm AI çağrıları
-// X-Device-Id ile rate-limit edilen /api/llm/* endpoint'lerinden geçer.
+// Backend API istemcisi. Bu sürümde Gemini API kullanılmıyor — tüm içerik üretimi
+// yerel (algoritmik) motorlarla yapılıyor. İstemci sadece sohbet kaydı ve cihaz
+// yönetimi için backend ile konuşur.
 
 const DEVICE_KEY = 'lovelog.deviceId';
 
@@ -18,7 +19,6 @@ const getDeviceId = (): string => {
     localStorage.setItem(DEVICE_KEY, fresh);
     return fresh;
   } catch {
-    // private mode / no-storage fallback — non-persistent
     return generateDeviceId();
   }
 };
@@ -27,158 +27,13 @@ const baseUrl = ((import.meta as any).env?.VITE_API_BASE_URL ?? '/api')
   .toString()
   .replace(/\/+$/, '');
 
-export interface LlmConfig {
-  temperature?: number;
-  maxOutputTokens?: number;
-  responseMimeType?: 'application/json' | 'text/plain';
-  responseSchema?: unknown;
-  systemInstruction?: string;
-}
-
-export interface LlmGenerateRequest {
-  model?: string;
-  prompt: string;
-  config?: LlmConfig;
-  signal?: AbortSignal;
-}
-
-const GENERATE_TIMEOUT_MS = 35_000;
-const STREAM_IDLE_TIMEOUT_MS = 40_000;
-
-const linkSignal = (external: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
-  const ac = new AbortController();
-  const onAbort = () => ac.abort(external?.reason);
-  const timer = setTimeout(() => ac.abort(new DOMException('timeout', 'AbortError')), timeoutMs);
-  if (external) {
-    if (external.aborted) ac.abort(external.reason);
-    else external.addEventListener('abort', onAbort, { once: true });
-  }
-  return {
-    signal: ac.signal,
-    cleanup: () => {
-      clearTimeout(timer);
-      if (external) external.removeEventListener('abort', onAbort);
-    },
-  };
-};
-
-export interface LlmGenerateResponse {
-  text: string;
-  candidates: unknown;
-}
-
-export class LlmUnavailableError extends Error {
-  constructor(message = 'llm_unavailable') {
-    super(message);
-    this.name = 'LlmUnavailableError';
-  }
-}
-
 const headers = (): Record<string, string> => ({
   'Content-Type': 'application/json',
   'X-Device-Id': getDeviceId(),
 });
 
-export const llmGenerate = async (req: LlmGenerateRequest): Promise<LlmGenerateResponse> => {
-  const { signal: externalSignal, ...rest } = req;
-  const { signal, cleanup } = linkSignal(externalSignal, GENERATE_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${baseUrl}/llm/generate`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(rest),
-      signal,
-    });
-    if (res.status === 503) throw new LlmUnavailableError();
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      throw new Error(`llm_generate_failed ${res.status} ${detail}`);
-    }
-    return (await res.json()) as LlmGenerateResponse;
-  } finally {
-    cleanup();
-  }
-};
-
-export type LlmStreamEvent =
-  | { type: 'chunk'; text: string }
-  | { type: 'done' }
-  | { type: 'error'; message: string };
-
-export async function* llmStream(req: LlmGenerateRequest): AsyncGenerator<LlmStreamEvent, void, unknown> {
-  const { signal: externalSignal, ...rest } = req;
-  const { signal, cleanup } = linkSignal(externalSignal, STREAM_IDLE_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(`${baseUrl}/llm/stream`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(rest),
-      signal,
-    });
-  } catch (err) {
-    cleanup();
-    throw err;
-  }
-  if (res.status === 503) { cleanup(); throw new LlmUnavailableError(); }
-  if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => '');
-    cleanup();
-    throw new Error(`llm_stream_failed ${res.status} ${detail}`);
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-
-  // Minimal SSE parser: parses `event: x\ndata: {...}\n\n` records.
-  const flush = function* (): Generator<LlmStreamEvent> {
-    while (true) {
-      const sep = buffer.indexOf('\n\n');
-      if (sep === -1) return;
-      const raw = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-
-      let event = 'message';
-      const dataParts: string[] = [];
-      for (const line of raw.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
-      }
-      if (!dataParts.length) continue;
-      const dataStr = dataParts.join('\n');
-      try {
-        const data = JSON.parse(dataStr);
-        if (event === 'chunk' && typeof data?.text === 'string') yield { type: 'chunk', text: data.text };
-        else if (event === 'done') yield { type: 'done' };
-        else if (event === 'error') yield { type: 'error', message: data?.message ?? 'unknown' };
-      } catch {
-        // ignore malformed line
-      }
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    for (const ev of flush()) yield ev;
-  }
-  buffer += decoder.decode();
-  for (const ev of flush()) yield ev;
-}
-
-export const llmIsAvailable = async (): Promise<boolean> => {
-  try {
-    const res = await fetch(`${baseUrl}/../health`.replace(/\/api\/\.\.\//, '/'), { method: 'GET' });
-    return res.ok;
-  } catch {
-    return false;
-  }
-};
-
 // Mağaza zorunluluğu (Play 2024+): kullanıcı hesabını/verisini silebilmeli.
-// Anonim cihaz ID kullandığımız için "hesap" = cihaz kaydı.
+// Bu sürümde "hesap" = cihaz kaydı (Sprint 2'de email/şifre ile değişecek).
 export const deleteDeviceData = async (): Promise<boolean> => {
   const id = getDeviceId();
   try {
@@ -193,3 +48,73 @@ export const deleteDeviceData = async (): Promise<boolean> => {
 };
 
 export const getActiveDeviceId = (): string => getDeviceId();
+
+// ===========================================================================
+// Saved chats API — yüklenen .txt dosyalarını sunucu tarafında saklama.
+// Device-id bazlı isolation; link-paylaşımı access modeli.
+// ===========================================================================
+
+export interface SavedChatSummary {
+  id: string;
+  name: string;
+  uploadedAt: number;
+  sizeBytes: number;
+}
+
+export interface SavedChatFull extends SavedChatSummary {
+  raw: string;
+}
+
+export const uploadChat = async (name: string, raw: string): Promise<SavedChatSummary> => {
+  const res = await fetch(`${baseUrl}/chats`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ name, raw }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`upload_chat_failed ${res.status} ${detail}`);
+  }
+  return (await res.json()) as SavedChatSummary;
+};
+
+export const listSavedChats = async (): Promise<{ chats: SavedChatSummary[]; max: number }> => {
+  const res = await fetch(`${baseUrl}/chats`, { headers: headers() });
+  if (!res.ok) {
+    if (res.status === 400) return { chats: [], max: 0 };
+    throw new Error(`list_chats_failed ${res.status}`);
+  }
+  return (await res.json()) as { chats: SavedChatSummary[]; max: number };
+};
+
+export const getSavedChat = async (id: string): Promise<SavedChatFull> => {
+  const res = await fetch(`${baseUrl}/chats/${encodeURIComponent(id)}`, { headers: headers() });
+  if (!res.ok) throw new Error(`get_chat_failed ${res.status}`);
+  return (await res.json()) as SavedChatFull;
+};
+
+export const deleteSavedChat = async (id: string): Promise<boolean> => {
+  try {
+    const res = await fetch(`${baseUrl}/chats/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: headers(),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+};
+
+export const deleteAllSavedChats = async (): Promise<number> => {
+  try {
+    const res = await fetch(`${baseUrl}/chats`, {
+      method: 'DELETE',
+      headers: headers(),
+    });
+    if (!res.ok) return 0;
+    const data = (await res.json()) as { deleted?: number };
+    return data.deleted ?? 0;
+  } catch {
+    return 0;
+  }
+};

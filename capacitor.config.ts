@@ -35,6 +35,14 @@ const config: CapacitorConfig = {
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
+    // Weekly digest reminders (Pazar 21:00). Small icon + sound use platform
+    // defaults; smallIcon name should match the resource added under
+    // android/app/src/main/res/drawable. iOS uses the app icon.
+    LocalNotifications: {
+      smallIcon: 'ic_stat_lovelog',
+      iconColor: '#ff5d94',
+      sound: 'default',
+    },
   },
 };
 

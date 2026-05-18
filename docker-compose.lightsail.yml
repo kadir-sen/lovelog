@@ -28,8 +28,13 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       PORT: "3001"
       HOST: "0.0.0.0"
-      ALLOWED_ORIGINS: "https://lovelog-sude.duckdns.org,capacitor://localhost,https://localhost,http://localhost:3000"
+      ALLOWED_ORIGINS: "https://lovelog-sude.duckdns.org,capacitor://localhost,https://localhost,http://localhost:3000,http://localhost:3002"
       LOG_LEVEL: "info"
+      DATA_DIR: "/data"
     ports:
       - "127.0.0.1:3001:3001"
+    volumes:
+      # Host path: /opt/lovelog-data (sunucuda mkdir + chown ile hazırlanır).
+      # SQLite veritabanı (chats) burada persist edilir, container restart'lara dayanır.
+      - /opt/lovelog-data:/data
     restart: unless-stopped

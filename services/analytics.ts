@@ -3,10 +3,10 @@ import {
   ChatSegment,
   DailyStats,
   EmojiUsage,
+  AlgorithmicSummary,
   EvidenceSnippet,
   FlowStats,
   HourlyActivity,
-  LlmCompactSummary,
   LoveWordStat,
   Message,
   NlpSignals,
@@ -24,6 +24,7 @@ import {
   splitClauses
 } from './turkishLemma';
 import { detectPatterns } from './patternDetectors';
+import { buildMessageInsights, extractEpisodes, buildStyleProfile } from './nlp';
 
 type SignalKey = keyof NormalizedMessage['signals'];
 type ProgressCallback = (stage: string) => void;
@@ -31,7 +32,6 @@ type ProgressCallback = (stage: string) => void;
 const SESSION_GAP_MINUTES = 360;
 const FLUENT_GAP_MINUTES = 3;
 const LONG_SILENCE_MINUTES = 24 * 60;
-const MAX_LLM_PAYLOAD_CHARS = 18000;
 
 const LOVE_KEYWORDS = ['aşkım', 'sevgilim', 'bitanem', 'hayatım', 'seni seviyorum', 'özledim', 'canım', 'bebeğim', 'balım', 'kalbim', 'çiçeğim', 'kuzum', 'yavrum', 'prensesim', 'paşam', 'aşk', 'her şeyim'];
 const EMOTIONAL_KEYWORDS = ['mutlu', 'üzgün', 'kırıldım', 'sevindim', 'ağladım', 'hissediyorum', 'özledim', 'yalnız', 'heyecan', 'kalbim', 'iyi geldi'];
@@ -292,10 +292,10 @@ const normalizeMessages = (messages: Message[]): NormalizedMessage[] => {
   // bir önceki mesajın gülmesini de hesaba katıp adjusted'ı yeniden hesaplıyor
   // ve playfulnessFlag'i nihai değerine güncelliyoruz.
   for (let i = 0; i < result.length; i++) {
-    const self = result[i].playfulnessFlag;
-    const prevLaugh = i > 0 ? !!result[i - 1].playfulnessFlag : false;
+    const self = !result[i].isMedia && hasLaugh(result[i].content);
+    const prevLaugh = i > 0 && !result[i - 1].isMedia ? hasLaugh(result[i - 1].content) : false;
     const finalPlayful = self || prevLaugh;
-    if (finalPlayful !== self) {
+    if (finalPlayful !== result[i].playfulnessFlag) {
       const m = result[i];
       m.playfulnessFlag = finalPlayful;
       m.adjustedSignals = {
@@ -461,7 +461,7 @@ const buildEvidence = (messages: NormalizedMessage[], aliasMap: Record<string, s
   return evidence.slice(0, 16);
 };
 
-const createCompactSummary = (
+const createAlgorithmicSummary = (
   participants: ParticipantStats[],
   nlpSignals: NlpSignals,
   periodSummaries: PeriodSummary[],
@@ -470,53 +470,38 @@ const createCompactSummary = (
   totalMessages: number,
   dateRange: { start: Date; end: Date },
   aliasMap: Record<string, string>
-): LlmCompactSummary => {
-  const compact: LlmCompactSummary = {
-    privacyNote: 'Ham sohbet LLM payloadına dahil edilmedi; sadece sıkıştırılmış metrikler ve kısa kanıt parçaları gönderildi. Kişi adları kullanıcının tercihiyle korundu; link/e-posta/telefon/uzun sayı dizileri maskelendi.',
-    aliases: { ...aliasMap },
-    totalMessages,
-    dateRange: {
-      start: getDateKey(dateRange.start),
-      end: getDateKey(dateRange.end)
-    },
-    participantSummaries: participants.map(participant => ({
-      alias: aliasMap[participant.name],
-      messageCount: participant.messageCount,
-      wordCount: participant.wordCount,
-      avgResponseMinutes: Number(participant.avgResponseTimeMinutes.toFixed(1)),
-      medianResponseMinutes: Number(participant.medianResponseTimeMinutes.toFixed(1)),
-      initiations: participant.initiations,
-      questionRate: Number((nlpSignals.byParticipant[participant.name]?.questionRate || 0).toFixed(3)),
-      loveRate: Number((nlpSignals.byParticipant[participant.name]?.loveRate || 0).toFixed(3)),
-      tensionRate: Number((nlpSignals.byParticipant[participant.name]?.tensionRate || 0).toFixed(3)),
-      harshRate: Number((nlpSignals.byParticipant[participant.name]?.harshRate || 0).toFixed(3)),
-      topEmojis: participant.topEmojis
+): AlgorithmicSummary => ({
+  privacyNote: 'Tüm yorumlar cihazında üretildi. Hiçbir veri üçüncü taraf bir AI servisine gönderilmedi.',
+  aliases: { ...aliasMap },
+  totalMessages,
+  dateRange: {
+    start: getDateKey(dateRange.start),
+    end: getDateKey(dateRange.end)
+  },
+  participantSummaries: participants.map(participant => ({
+    alias: aliasMap[participant.name],
+    messageCount: participant.messageCount,
+    wordCount: participant.wordCount,
+    avgResponseMinutes: Number(participant.avgResponseTimeMinutes.toFixed(1)),
+    medianResponseMinutes: Number(participant.medianResponseTimeMinutes.toFixed(1)),
+    initiations: participant.initiations,
+    questionRate: Number((nlpSignals.byParticipant[participant.name]?.questionRate || 0).toFixed(3)),
+    loveRate: Number((nlpSignals.byParticipant[participant.name]?.loveRate || 0).toFixed(3)),
+    tensionRate: Number((nlpSignals.byParticipant[participant.name]?.tensionRate || 0).toFixed(3)),
+    harshRate: Number((nlpSignals.byParticipant[participant.name]?.harshRate || 0).toFixed(3)),
+    topEmojis: participant.topEmojis
+  })),
+  periodHighlights: periodSummaries
+    .filter(period => period.type === 'month')
+    .sort((a, b) => (b.messageCount + b.loveScore + b.tensionScore) - (a.messageCount + a.loveScore + a.tensionScore))
+    .slice(0, 10)
+    .map(period => ({
+      ...period,
+      dominantParticipant: aliasMap[period.dominantParticipant] || period.dominantParticipant
     })),
-    periodHighlights: periodSummaries
-      .filter(period => period.type === 'month')
-      .sort((a, b) => (b.messageCount + b.loveScore + b.tensionScore) - (a.messageCount + a.loveScore + a.tensionScore))
-      .slice(0, 10)
-      .map(period => ({
-        ...period,
-        dominantParticipant: aliasMap[period.dominantParticipant] || period.dominantParticipant
-      })),
-    milestones,
-    evidence,
-    payloadStats: {
-      approximateChars: 0,
-      sourcePolicy: 'compact-summary-only'
-    }
-  };
-
-  let serialized = JSON.stringify(compact);
-  while (serialized.length > MAX_LLM_PAYLOAD_CHARS && compact.evidence.length > 4) {
-    compact.evidence.pop();
-    serialized = JSON.stringify(compact);
-  }
-  compact.payloadStats.approximateChars = serialized.length;
-
-  return compact;
-};
+  milestones,
+  evidence
+});
 
 export const analyzeChat = (messages: Message[], onProgress?: ProgressCallback): AnalysisResult => {
   if (messages.length === 0) {
@@ -761,7 +746,7 @@ export const analyzeChat = (messages: Message[], onProgress?: ProgressCallback):
   onProgress?.('Davranış örüntüleri taranıyor');
   const patterns = detectPatterns(normalizedMessages, authors, dailyStats, periodSummaries);
 
-  onProgress?.('Yapay zeka için güvenli özet hazırlanıyor');
+  onProgress?.('Yerel özet ve kanıtlar hazırlanıyor');
   const milestones = buildMilestones(dailyStats, periodSummaries, normalizedMessages);
   const evidence = buildEvidence(normalizedMessages, aliasMap);
   const participants = Object.values(statsMap);
@@ -769,7 +754,7 @@ export const analyzeChat = (messages: Message[], onProgress?: ProgressCallback):
     start: normalizedMessages[0].date,
     end: normalizedMessages[normalizedMessages.length - 1].date
   };
-  const llmSummary = createCompactSummary(
+  const algorithmicSummary = createAlgorithmicSummary(
     participants,
     nlpSignals,
     periodSummaries,
@@ -781,6 +766,21 @@ export const analyzeChat = (messages: Message[], onProgress?: ProgressCallback):
   );
 
   const sampleConversation = evidence.map(item => `${item.participantAlias}: ${item.text}`).join('\n');
+
+  // services/nlp bağlantısı — Dashboard kırılmasın diye tamamen opsiyonel,
+  // hata oluşursa pipeline sessizce eski çıktıyı döner.
+  onProgress?.('NLP içgörüleri çıkarılıyor');
+  let messageInsights: AnalysisResult['messageInsights'] | undefined;
+  let episodes: AnalysisResult['episodes'] | undefined;
+  let styleProfile: AnalysisResult['styleProfile'] | undefined;
+  try {
+    styleProfile = buildStyleProfile(normalizedMessages);
+    messageInsights = buildMessageInsights(normalizedMessages, { styleProfile });
+    episodes = extractEpisodes(messageInsights as any);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[analytics] services/nlp çıktısı atlandı:', err);
+  }
 
   return {
     participants,
@@ -799,8 +799,11 @@ export const analyzeChat = (messages: Message[], onProgress?: ProgressCallback):
     nlpSignals,
     milestones,
     patterns,
-    llmSummary,
-    sampleConversation
+    algorithmicSummary,
+    sampleConversation,
+    messageInsights,
+    episodes,
+    styleProfile,
   };
 };
 

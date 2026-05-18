@@ -3,7 +3,7 @@ import { LL, Sparkle, Glass } from './lovelog/tokens';
 import { Screen } from './lovelog/Screen';
 
 interface FileUploadProps {
-  onFileProcessed: (text: string) => void | Promise<void>;
+  onFileProcessed: (text: string, fileName?: string) => void | Promise<void>;
   onBack?: () => void;
   progressStage?: string | null;
 }
@@ -27,7 +27,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileProcessed, onBack,
     reader.onload = async event => {
       try {
         const text = event.target?.result as string;
-        await onFileProcessed(text);
+        await onFileProcessed(text, file.name);
       } catch (err) {
         setLocalError(err instanceof Error ? err.message : 'Dosya işlenirken bir hata oluştu.');
       } finally {

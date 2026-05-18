@@ -10,6 +10,10 @@ const KEYS = {
   relationMode: 'lovelog.relationMode.v1',
   viewerName: 'lovelog.viewerName.v1',
   deviceId: 'lovelog.deviceId',
+  demoMode: 'lovelog.demoMode.v1',
+  telemetryConsent: 'lovelog.telemetryConsent.v1',
+  firstOpenAt: 'lovelog.firstOpenAt.v1',
+  lastWrappedYear: 'lovelog.lastWrappedYear.v1',
 } as const;
 
 const safeGet = (key: string): string | null => {
@@ -97,6 +101,35 @@ export const clearPersistedState = (): void => {
   safeRemove(KEYS.analysis);
   safeRemove(KEYS.relationMode);
   safeRemove(KEYS.viewerName);
+  safeRemove(KEYS.demoMode);
+  safeRemove(KEYS.lastWrappedYear);
+};
+
+// Demo mode flag. When true, App.tsx loads services/demoData on boot
+// instead of (or in addition to) any persisted real analysis.
+export const loadDemoMode = (): boolean => {
+  return safeGet(KEYS.demoMode) === '1';
+};
+
+export const saveDemoMode = (active: boolean): void => {
+  if (active) {
+    safeSet(KEYS.demoMode, '1');
+  } else {
+    safeRemove(KEYS.demoMode);
+  }
+};
+
+// Track the year for which we've already shown Wrapped, so we can prompt
+// it again only when a new year-end occurs.
+export const loadLastWrappedYear = (): number | null => {
+  const raw = safeGet(KEYS.lastWrappedYear);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+};
+
+export const saveLastWrappedYear = (year: number): void => {
+  safeSet(KEYS.lastWrappedYear, String(year));
 };
 
 // Tüm cihaz verilerini siler (mağaza zorunluluğu için "hesap silme" eşdeğeri).

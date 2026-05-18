@@ -3,13 +3,24 @@ import { LL, Sparkle, Glass } from './lovelog/tokens';
 import { Screen } from './lovelog/Screen';
 import { AnalysisResult } from '../types';
 import { RelationMode } from './RelationSelectScreen';
+import { SavedChatsCard } from './SavedChatsCard';
+import { ShareButton } from './ShareButton';
+import type { SavedChatSummary } from '../services/apiClient';
 
 interface HomeScreenProps {
   analysis: AnalysisResult | null;
   onUpload: () => void;
   onOpenAnalysis: () => void;
   onOpenFal: () => void;
+  onStartDemo?: () => void;
+  onOpenQuiz?: () => void;
+  onOpenWrapped?: () => void;
+  isDemo?: boolean;
   relationMode?: RelationMode;
+  savedChats?: SavedChatSummary[];
+  savedChatsLoading?: boolean;
+  onOpenSavedChat?: (id: string) => void;
+  onDeleteSavedChat?: (id: string) => void;
 }
 
 const computeLoveScore = (a: AnalysisResult): number => {
@@ -36,7 +47,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onUpload,
   onOpenAnalysis,
   onOpenFal,
+  onStartDemo,
+  onOpenQuiz,
+  onOpenWrapped,
+  isDemo = false,
   relationMode = 'lover',
+  savedChats = [],
+  savedChatsLoading = false,
+  onOpenSavedChat,
+  onDeleteSavedChat,
 }) => {
   const p1 = analysis?.participants[0];
   const p2 = analysis?.participants[1] ?? p1;
@@ -187,58 +206,223 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   </div>
                 ))}
               </div>
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ position: 'absolute', top: 14, right: 14, zIndex: 2 }}
+              >
+                <ShareButton
+                  compact
+                  variant="score"
+                  surface="home_hero"
+                  pillar={1}
+                  data={{
+                    names: [p1?.name ?? 'A', p2?.name ?? 'B'],
+                    anonymize: true,
+                    dateLabel: analysis
+                      ? `${new Date(analysis.dateRange.start).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })} – ${new Date(analysis.dateRange.end).toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })}`
+                      : undefined,
+                    payload: {
+                      score,
+                      totalMessages: analysis?.totalMessages ?? 0,
+                      modeLabel: relationMode === 'friend' ? 'bestie skoru' : 'aşk skoru',
+                    },
+                  }}
+                />
+              </div>
             </div>
           </Glass>
-        ) : (
-          <Glass strong hover onClick={onUpload} style={{ padding: 22, marginBottom: 18, position: 'relative', overflow: 'hidden' }}>
+        ) : null}
+
+        {analysis && onOpenWrapped && (
+          <Glass
+            hover
+            onClick={onOpenWrapped}
+            style={{
+              padding: 0,
+              marginBottom: 18,
+              overflow: 'hidden',
+              borderRadius: 22,
+            }}
+          >
             <div
               style={{
-                position: 'absolute',
-                top: -30,
-                right: -30,
-                width: 140,
-                height: 140,
-                borderRadius: '50%',
-                background: `radial-gradient(circle, ${LL.hotPink}55, transparent 70%)`,
-                filter: 'blur(20px)',
+                padding: 18,
+                position: 'relative',
+                background: `linear-gradient(135deg, ${LL.amethyst}55, ${LL.violet}55)`,
               }}
-            />
-            <div style={{ position: 'relative' }}>
+            >
               <div
                 style={{
-                  fontSize: 11,
-                  color: LL.gold,
-                  fontWeight: 700,
-                  letterSpacing: 1.5,
-                  textTransform: 'uppercase',
+                  position: 'absolute',
+                  top: -30,
+                  left: -30,
+                  width: 140,
+                  height: 140,
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle, ${LL.hotPink}55, transparent 70%)`,
+                  filter: 'blur(20px)',
                 }}
-              >
-                İlk adım
-              </div>
-              <div className="ll-serif" style={{ fontSize: 22, fontStyle: 'italic', marginTop: 6, lineHeight: 1.2 }}>
-                Sohbetini yükle, yıldızlar konuşsun ✨
-              </div>
-              <div style={{ fontSize: 12, color: LL.fgMuted, marginTop: 8, lineHeight: 1.5 }}>
-                Sadece WhatsApp .txt dışa aktarımını seç, gerisini bize bırak.
-              </div>
+              />
               <div
                 style={{
-                  marginTop: 14,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '10px 16px',
-                  borderRadius: 999,
-                  background: '#fff',
-                  color: LL.ink,
-                  fontWeight: 700,
-                  fontSize: 13,
+                  position: 'absolute',
+                  bottom: -20,
+                  right: -10,
+                  fontSize: 96,
+                  opacity: 0.18,
+                  lineHeight: 1,
                 }}
               >
-                Sohbet yükle →
+                🎁
+              </div>
+              <div style={{ position: 'relative' }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: LL.gold,
+                    fontWeight: 800,
+                    letterSpacing: 2,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {new Date(analysis.dateRange.end).getFullYear()} Wrapped
+                </div>
+                <div
+                  className="ll-serif"
+                  style={{
+                    fontSize: 22,
+                    fontStyle: 'italic',
+                    marginTop: 6,
+                    lineHeight: 1.2,
+                    maxWidth: 280,
+                  }}
+                >
+                  Yılın hikâyesini birlikte kaydır
+                </div>
+                <div style={{ fontSize: 12, color: LL.fgMuted, marginTop: 8, lineHeight: 1.5, maxWidth: 280 }}>
+                  En sıcak ay, yılın emojisi, ritüelleriniz — bir Story gibi.
+                </div>
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 14px',
+                    borderRadius: 999,
+                    background: '#fff',
+                    color: LL.ink,
+                    fontWeight: 700,
+                    fontSize: 12,
+                  }}
+                >
+                  Wrapped'ı aç →
+                </div>
               </div>
             </div>
           </Glass>
+        )}
+
+        {!analysis && (
+          <>
+            <Glass strong hover onClick={onUpload} style={{ padding: 22, marginBottom: 12, position: 'relative', overflow: 'hidden' }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -30,
+                  right: -30,
+                  width: 140,
+                  height: 140,
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle, ${LL.hotPink}55, transparent 70%)`,
+                  filter: 'blur(20px)',
+                }}
+              />
+              <div style={{ position: 'relative' }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: LL.gold,
+                    fontWeight: 700,
+                    letterSpacing: 1.5,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  İlk adım
+                </div>
+                <div className="ll-serif" style={{ fontSize: 22, fontStyle: 'italic', marginTop: 6, lineHeight: 1.2 }}>
+                  Sohbetini yükle, yıldızlar konuşsun ✨
+                </div>
+                <div style={{ fontSize: 12, color: LL.fgMuted, marginTop: 8, lineHeight: 1.5 }}>
+                  Sadece WhatsApp .txt dışa aktarımını seç, gerisini bize bırak.
+                </div>
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '10px 16px',
+                    borderRadius: 999,
+                    background: '#fff',
+                    color: LL.ink,
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  Sohbet yükle →
+                </div>
+              </div>
+            </Glass>
+            {onStartDemo && (
+              <Glass
+                hover
+                onClick={onStartDemo}
+                style={{
+                  padding: 14,
+                  marginBottom: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  borderRadius: 16,
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    background: `${LL.lavender}25`,
+                    display: 'grid',
+                    placeItems: 'center',
+                    flexShrink: 0,
+                    fontSize: 16,
+                  }}
+                >
+                  ✦
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: LL.lavender, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+                    Önce demo'yu gör
+                  </div>
+                  <div style={{ fontSize: 13, color: LL.fg, fontWeight: 500, marginTop: 2 }}>
+                    Ali &amp; Burcu örnek raporu — 30 saniye
+                  </div>
+                </div>
+                <div style={{ color: LL.fgMuted, fontSize: 18 }}>›</div>
+              </Glass>
+            )}
+          </>
+        )}
+
+        {/* Kayıtlı sohbetler — birden fazla yükleme için */}
+        {onOpenSavedChat && onDeleteSavedChat && (
+          <SavedChatsCard
+            chats={savedChats}
+            loading={savedChatsLoading}
+            onOpen={onOpenSavedChat}
+            onDelete={onDeleteSavedChat}
+          />
         )}
 
         {/* Quick actions */}
@@ -254,7 +438,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         >
           Bugün senin için
         </div>
-        <div style={{ marginBottom: 18 }}>
+        <div style={{ marginBottom: 18, display: 'grid', gap: 10, gridTemplateColumns: onOpenQuiz ? '1fr 1fr' : '1fr' }}>
+          {onOpenQuiz && (
+            <Glass hover onClick={onOpenQuiz} style={{ padding: 16, position: 'relative', overflow: 'hidden', minHeight: 110 }}>
+              <div style={{ position: 'absolute', bottom: -10, right: -10, fontSize: 56, opacity: 0.22 }}>✦</div>
+              <div style={{ fontSize: 11, color: LL.lavender, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+                2 dk
+              </div>
+              <div className="ll-serif" style={{ fontSize: 18, fontStyle: 'italic', marginTop: 6, lineHeight: 1.1 }}>
+                Bağlanma stilin?
+              </div>
+              <div style={{ fontSize: 11, color: LL.fgMuted, marginTop: 8 }}>
+                kısa quiz
+              </div>
+            </Glass>
+          )}
           <Glass hover onClick={onOpenFal} style={{ padding: 16, position: 'relative', overflow: 'hidden', minHeight: 110 }}>
             <div style={{ position: 'absolute', bottom: -10, right: -10, fontSize: 60, opacity: 0.25 }}>☾</div>
             <div
